@@ -1,4 +1,6 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
+import { db } from "./firebase.js";
+import { collection, doc, onSnapshot, addDoc, deleteDoc, updateDoc, setDoc, writeBatch } from "firebase/firestore";
 
 /* ═══════════════════════════════════════════ Constants ═══════════════════════════════════════════ */
 const THERAPISTS = [
@@ -65,19 +67,7 @@ function bufferConflictGeneric(appts, ds, time, dur, exId, filterFn) {
 function bufferConflict(appts, ds, time, dur, tid, exId) { return bufferConflictGeneric(appts, ds, time, dur, exId, a => a.therapist === tid); }
 function luBufferConflict(appts, ds, time, dur, exId) { return bufferConflictGeneric(appts, ds, time, dur, exId, () => true); }
 
-/* ═══════════════════════════════════════════ Demo ═══════════════════════════════════════════ */
-const INIT = [
-  { id: 1, date: "2026-03-20", time: "09:00", duration: 30, therapist: "A", patient: "王小明", birthday: "800515", onDuty: true, selfRef: true, treatType: "manual" },
-  { id: 2, date: "2026-03-20", time: "10:00", duration: 60, therapist: "B", patient: "李美玲", birthday: "751220", onDuty: true, selfRef: false, treatType: "manual" },
-  { id: 3, date: "2026-03-20", time: "14:30", duration: 30, therapist: "A", patient: "張大偉", birthday: "680301", onDuty: true, selfRef: true, treatType: "manual" },
-  { id: 4, date: "2026-03-21", time: "09:30", duration: 15, therapist: "C", patient: "陳淑芬", birthday: "900810", onDuty: true, selfRef: false, treatType: "shockwave" },
-  { id: 5, date: "2026-03-20", time: "11:00", duration: 15, therapist: "X", patient: "林志偉", birthday: "851105", onDuty: true, selfRef: false, treatType: "laser" },
-  { id: 6, date: "2026-03-20", time: "18:30", duration: 60, therapist: "D", patient: "黃雅琪", birthday: "780422", onDuty: true, selfRef: false, treatType: "manual" },
-];
-const LU_INIT = [
-  { id: 101, date: "2026-03-20", time: "14:30", duration: 30, patient: "趙志明", birthday: "720615", selfRef: false },
-  { id: 102, date: "2026-03-20", time: "16:00", duration: 60, patient: "孫麗華", birthday: "830901", selfRef: true },
-];
+/* ═══════════════════════════════════════════ Demo data removed — using Firestore ═══════════════════════════════════════════ */
 
 /* ═══════════════════════════════════════════ Shared UI ═══════════════════════════════════════════ */
 function Modal({ open, onClose, children, title }) {
@@ -974,11 +964,31 @@ function PwGate({ onAuth }) {
 
 /* ═══════════════════════════════════════════ MAIN ═══════════════════════════════════════════ */
 export default function App() {
-  const [appts, setAppts] = useState(INIT);
-  const [luAppts, setLuAppts] = useState(LU_INIT);
+  const [appts, setAppts] = useState([]);
+  const [luAppts, setLuAppts] = useState([]);
   const [cs, setCs] = useState({});
   const [luSlotCfg, setLuSlotCfg] = useState({});
   const [mainSlotCfg, setMainSlotCfg] = useState({});
+
+  // ── Firestore listeners ──
+  useEffect(() => {
+    const unsub1 = onSnapshot(collection(db, "appts"), snap => {
+      setAppts(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+    });
+    const unsub2 = onSnapshot(collection(db, "luAppts"), snap => {
+      setLuAppts(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+    });
+    const unsub3 = onSnapshot(doc(db, "config", "shifts"), snap => {
+      setCs(snap.exists() ? snap.data() : {});
+    });
+    const unsub4 = onSnapshot(doc(db, "config", "luSlotCfg"), snap => {
+      setLuSlotCfg(snap.exists() ? snap.data() : {});
+    });
+    const unsub5 = onSnapshot(doc(db, "config", "mainSlotCfg"), snap => {
+      setMainSlotCfg(snap.exists() ? snap.data() : {});
+    });
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); };
+  }, []);
   const [selDate, setSelDate] = useState(() => { const now = new Date(); const dow = now.getDay(); if (dow === 0 || dow === 6) { now.setDate(now.getDate() + (dow === 6 ? 2 : 1)); } return now; });
   const [page, setPage] = useState("front"); // front | admin-gate | admin
   const [frontTab, setFrontTab] = useState("book"); // book | lu | lookup
@@ -993,14 +1003,76 @@ export default function App() {
   const [alertMsg, setAlertMsg] = useState("");
   const [luChoiceModal, setLuChoiceModal] = useState(false);
 
-  const handleBook = appt => setAppts(p => [...p, appt]);
-  const handleDelete = id => { setAppts(p => p.filter(a => a.id !== id)); setAdminDetailModal(null); };
-  const handleUpdate = (id, ch) => { setAppts(p => p.map(a => a.id === id ? { ...a, ...ch } : a)); setAdminDetailModal(prev => prev?.id === id ? { ...prev, ...ch } : prev); };
-  const handleCopyDates = (appt, targets) => { const n = []; let sk = 0; targets.forEach(ds => { if (appt.onDuty && onDutySlotConflict(appts, ds, appt.time, appt.duration, null)) { sk++; return; } n.push({ ...appt, id: Date.now() + Math.random(), date: ds }); }); if (n.length) setAppts(p => [...p, ...n]); setAlertMsg(`已複製 ${n.length} 筆${sk ? `（${sk} 筆跳過）` : ""}`); };
-  const handleLuBook = appt => setLuAppts(p => [...p, appt]);
-  const handleLuDelete = id => { setLuAppts(p => p.filter(a => a.id !== id)); setLuDetailModal(null); };
-  const handleLuUpdate = (id, ch) => { setLuAppts(p => p.map(a => a.id === id ? { ...a, ...ch } : a)); setLuDetailModal(prev => prev?.id === id ? { ...prev, ...ch } : prev); };
-  const handleLuCopyDates = (appt, targets) => { const n = []; let sk = 0; targets.forEach(ds => { if (luSlotOccupied(luAppts, ds, appt.time, appt.duration, null)) { sk++; return; } n.push({ ...appt, id: Date.now() + Math.random(), date: ds, checkedIn: false }); }); if (n.length) setLuAppts(p => [...p, ...n]); setAlertMsg(`已複製 ${n.length} 筆${sk ? `（${sk} 筆跳過）` : ""}`); };
+  // ── Main appts handlers ──
+  const handleBook = async (appt) => {
+    const { id, ...data } = appt;
+    await addDoc(collection(db, "appts"), data);
+  };
+  const handleDelete = async (id) => {
+    await deleteDoc(doc(db, "appts", id));
+    setAdminDetailModal(null);
+  };
+  const handleUpdate = async (id, ch) => {
+    await updateDoc(doc(db, "appts", id), ch);
+    setAdminDetailModal(prev => prev?.id === id ? { ...prev, ...ch } : prev);
+  };
+  const handleCopyDates = async (appt, targets) => {
+    const batch = writeBatch(db);
+    let sk = 0;
+    const { id, ...base } = appt;
+    targets.forEach(ds => {
+      if (base.onDuty && onDutySlotConflict(appts, ds, base.time, base.duration, null)) { sk++; return; }
+      const ref = doc(collection(db, "appts"));
+      batch.set(ref, { ...base, date: ds, checkedIn: false });
+    });
+    await batch.commit();
+    const added = targets.length - sk;
+    setAlertMsg(`已複製 ${added} 筆${sk ? `（${sk} 筆跳過）` : ""}`);
+  };
+
+  // ── Lu appts handlers ──
+  const handleLuBook = async (appt) => {
+    const { id, ...data } = appt;
+    await addDoc(collection(db, "luAppts"), data);
+  };
+  const handleLuDelete = async (id) => {
+    await deleteDoc(doc(db, "luAppts", id));
+    setLuDetailModal(null);
+  };
+  const handleLuUpdate = async (id, ch) => {
+    await updateDoc(doc(db, "luAppts", id), ch);
+    setLuDetailModal(prev => prev?.id === id ? { ...prev, ...ch } : prev);
+  };
+  const handleLuCopyDates = async (appt, targets) => {
+    const batch = writeBatch(db);
+    let sk = 0;
+    const { id, ...base } = appt;
+    targets.forEach(ds => {
+      if (luSlotOccupied(luAppts, ds, base.time, base.duration, null)) { sk++; return; }
+      const ref = doc(collection(db, "luAppts"));
+      batch.set(ref, { ...base, date: ds, checkedIn: false });
+    });
+    await batch.commit();
+    const added = targets.length - sk;
+    setAlertMsg(`已複製 ${added} 筆${sk ? `（${sk} 筆跳過）` : ""}`);
+  };
+
+  // ── Config writers (wrap setters to sync to Firestore) ──
+  const fireSetMainSlotCfg = (updater) => {
+    const next = typeof updater === "function" ? updater(mainSlotCfg) : updater;
+    // Remove undefined values for Firestore
+    const clean = {}; Object.entries(next).forEach(([k, v]) => { if (v !== undefined) clean[k] = v; });
+    setDoc(doc(db, "config", "mainSlotCfg"), clean);
+  };
+  const fireSetLuSlotCfg = (updater) => {
+    const next = typeof updater === "function" ? updater(luSlotCfg) : updater;
+    const clean = {}; Object.entries(next).forEach(([k, v]) => { if (v !== undefined) clean[k] = v; });
+    setDoc(doc(db, "config", "luSlotCfg"), clean);
+  };
+  const fireSetCs = (updater) => {
+    const next = typeof updater === "function" ? updater(cs) : updater;
+    setDoc(doc(db, "config", "shifts"), next);
+  };
 
   const isAdmin = page === "admin";
 
@@ -1042,14 +1114,14 @@ export default function App() {
 
       {/* ── ADMIN ── */}
       {isAdmin && adminTab === "schedule" && (<><NavCtrl selDate={selDate} setSelDate={setSelDate} viewMode={adminView} setViewMode={setAdminView} showDayView={true} /><ThFilterBar filterTh={filterTh} setFilterTh={setFilterTh} /><div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10, padding: "5px 12px", background: "#FFFDF5", borderRadius: 7, border: "1px solid #E0D5C1", fontSize: 10, alignItems: "center" }}>{THERAPISTS.map(t => (<span key={t.id} style={{ display: "flex", alignItems: "center", gap: 3 }}><span style={{ display: "inline-flex", width: 14, height: 14, borderRadius: "50%", background: t.color, color: "white", fontSize: 8, fontWeight: 700, alignItems: "center", justifyContent: "center" }}>{t.id}</span><span>{t.name}</span></span>))}<span style={{ borderLeft: "1px solid #D4C5A9", paddingLeft: 8, display: "flex", gap: 6 }}><span style={{ color: "#2E7D6F", fontWeight: 600 }}>■班內</span><span style={{ color: "#C2563A", fontWeight: 600 }}>┈班外</span><span style={{ color: "#FFD700", fontWeight: 600 }}>▮已報到</span></span></div>
-        {adminView === "day" ? <AdminDayView appts={appts} selDate={selDate} onCellClick={(d, t) => setBookingModal({ date: d, time: t })} onApptClick={a => setAdminDetailModal(a)} mainSlotCfg={mainSlotCfg} setMainSlotCfg={setMainSlotCfg} /> : <AdminWeekGrid appts={appts} selDate={selDate} onCellClick={(d, t) => setBookingModal({ date: d, time: t })} onApptClick={a => setAdminDetailModal(a)} filterTh={filterTh} cs={cs} />}</>)}
+        {adminView === "day" ? <AdminDayView appts={appts} selDate={selDate} onCellClick={(d, t) => setBookingModal({ date: d, time: t })} onApptClick={a => setAdminDetailModal(a)} mainSlotCfg={mainSlotCfg} setMainSlotCfg={fireSetMainSlotCfg} /> : <AdminWeekGrid appts={appts} selDate={selDate} onCellClick={(d, t) => setBookingModal({ date: d, time: t })} onApptClick={a => setAdminDetailModal(a)} filterTh={filterTh} cs={cs} />}</>)}
 
       {isAdmin && adminTab === "lu" && (<><NavCtrl selDate={selDate} setSelDate={setSelDate} viewMode={luAdminView} setViewMode={setLuAdminView} showDayView={true} />
-        {luAdminView === "day" ? <LuAdminDayView appts={luAppts} selDate={selDate} onCellClick={(d, t) => setLuBookingModal({ date: d, time: t })} onApptClick={a => setLuDetailModal(a)} luSlotCfg={luSlotCfg} setLuSlotCfg={setLuSlotCfg} />
+        {luAdminView === "day" ? <LuAdminDayView appts={luAppts} selDate={selDate} onCellClick={(d, t) => setLuBookingModal({ date: d, time: t })} onApptClick={a => setLuDetailModal(a)} luSlotCfg={luSlotCfg} setLuSlotCfg={fireSetLuSlotCfg} />
         : <LuAdminWeekGrid appts={luAppts} selDate={selDate} onCellClick={(d, t) => setLuBookingModal({ date: d, time: t })} onApptClick={a => setLuDetailModal(a)} luSlotCfg={luSlotCfg} />}</>)}
 
       {isAdmin && adminTab === "salary" && <SalarySummary appts={appts} luAppts={luAppts} cs={cs} />}
-      {isAdmin && adminTab === "shifts" && <ShiftEditor customShifts={cs} setCustomShifts={setCs} />}
+      {isAdmin && adminTab === "shifts" && <ShiftEditor customShifts={cs} setCustomShifts={fireSetCs} />}
     </main>
 
     {/* ── MODALS ── */}
