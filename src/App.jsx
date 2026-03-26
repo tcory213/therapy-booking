@@ -515,7 +515,8 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
         </tr>); })}</tbody></table></div>
     {showPrint && (
       <div style={{ position: "fixed", inset: 0, zIndex: 1200, background: "white", overflowY: "auto", padding: 24 }}>
-        <style>{`@media print { .no-print { display: none !important; } }`}</style>
+        <style>{`@media print { .no-print { display: none !important; } body > div > * { visibility: hidden; } .print-overlay { visibility: visible !important; position: absolute; left: 0; top: 0; width: 100%; } }`}</style>
+        <div className="print-overlay">
         <div className="no-print" style={{ display: "flex", gap: 10, marginBottom: 16 }}>
           <button onClick={() => { window.print(); }} style={{ padding: "10px 28px", borderRadius: 8, border: "none", background: "#3D2B1F", color: "white", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>🖨️ 列印此頁</button>
           <button onClick={() => setShowPrint(false)} style={{ padding: "10px 20px", borderRadius: 8, border: "1.5px solid #D4C5A9", background: "white", color: "#5A4A3A", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>✕ 關閉</button>
@@ -551,7 +552,7 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
             {printContent.rows.length === 0 && <tr><td colSpan={2} style={{ padding: 20, textAlign: "center", color: "#aaa", border: "1px solid #ccc" }}>今日無預約</td></tr>}
           </tbody>
         </table>
-      </div>
+      </div></div>
     )}
   </div>);
 }
