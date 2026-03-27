@@ -114,7 +114,7 @@ function NavCtrl({ selDate, setSelDate, viewMode, setViewMode, showDayView, extr
     <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
       <button onClick={() => nav(-1)} style={navBtn}>◀</button>
       <div style={{ padding: "5px 12px", background: "#FFFDF5", borderRadius: 6, border: "1px solid #D4C5A9", fontWeight: 700, color: "#3D2B1F", fontSize: 12, minWidth: 140, textAlign: "center" }}>
-        {viewMode === "week" ? (() => { const w = weekDates(selDate); return `${w[0].getMonth() + 1}/${w[0].getDate()} — ${w[6].getMonth() + 1}/${w[6].getDate()}`; })()
+        {viewMode === "week" ? (() => { const w = weekDates(selDate); return `${w[0].getMonth() + 1}/${w[0].getDate()} — ${w[5].getMonth() + 1}/${w[5].getDate()}`; })()
           : `${selDate.getFullYear()}/${selDate.getMonth() + 1}/${selDate.getDate()} ${WDAY[(selDate.getDay() + 6) % 7]}`}
       </div>
       <button onClick={() => nav(1)} style={navBtn}>▶</button>
