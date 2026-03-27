@@ -971,22 +971,27 @@ export default function App() {
   const [mainSlotCfg, setMainSlotCfg] = useState({});
 
   // ── Firestore listeners ──
+  const [fireErr, setFireErr] = useState("");
   useEffect(() => {
+    const onErr = (e) => { console.error("Firestore listener error:", e); setFireErr("Firestore 連線錯誤：" + e.message); };
     const unsub1 = onSnapshot(collection(db, "appts"), snap => {
+      console.log("appts loaded:", snap.docs.length);
       setAppts(snap.docs.map(d => ({ ...d.data(), id: d.id })));
-    });
+    }, onErr);
     const unsub2 = onSnapshot(collection(db, "luAppts"), snap => {
+      console.log("luAppts loaded:", snap.docs.length);
       setLuAppts(snap.docs.map(d => ({ ...d.data(), id: d.id })));
-    });
+    }, onErr);
     const unsub3 = onSnapshot(doc(db, "config", "shifts"), snap => {
+      console.log("shifts loaded:", snap.exists());
       setCs(snap.exists() ? snap.data() : {});
-    });
+    }, onErr);
     const unsub4 = onSnapshot(doc(db, "config", "luSlotCfg"), snap => {
       setLuSlotCfg(snap.exists() ? snap.data() : {});
-    });
+    }, onErr);
     const unsub5 = onSnapshot(doc(db, "config", "mainSlotCfg"), snap => {
       setMainSlotCfg(snap.exists() ? snap.data() : {});
-    });
+    }, onErr);
     return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); };
   }, []);
   const [selDate, setSelDate] = useState(() => { const now = new Date(); const dow = now.getDay(); if (dow === 0 || dow === 6) { now.setDate(now.getDate() + (dow === 6 ? 2 : 1)); } return now; });
@@ -1005,16 +1010,26 @@ export default function App() {
 
   // ── Main appts handlers ──
   const handleBook = async (appt) => {
-    const { id, ...data } = appt;
-    await addDoc(collection(db, "appts"), data);
+    try {
+      const { id, ...data } = appt;
+      await addDoc(collection(db, "appts"), data);
+      console.log("appt written OK");
+    } catch (e) {
+      console.error("handleBook error:", e);
+      setAlertMsg("預約寫入失敗：" + e.message);
+    }
   };
   const handleDelete = async (id) => {
-    await deleteDoc(doc(db, "appts", id));
-    setAdminDetailModal(null);
+    try {
+      await deleteDoc(doc(db, "appts", id));
+      setAdminDetailModal(null);
+    } catch (e) { console.error("delete error:", e); setAlertMsg("刪除失敗：" + e.message); }
   };
   const handleUpdate = async (id, ch) => {
-    await updateDoc(doc(db, "appts", id), ch);
-    setAdminDetailModal(prev => prev?.id === id ? { ...prev, ...ch } : prev);
+    try {
+      await updateDoc(doc(db, "appts", id), ch);
+      setAdminDetailModal(prev => prev?.id === id ? { ...prev, ...ch } : prev);
+    } catch (e) { console.error("update error:", e); setAlertMsg("更新失敗：" + e.message); }
   };
   const handleCopyDates = async (appt, targets) => {
     const batch = writeBatch(db);
@@ -1032,16 +1047,26 @@ export default function App() {
 
   // ── Lu appts handlers ──
   const handleLuBook = async (appt) => {
-    const { id, ...data } = appt;
-    await addDoc(collection(db, "luAppts"), data);
+    try {
+      const { id, ...data } = appt;
+      await addDoc(collection(db, "luAppts"), data);
+      console.log("luAppt written OK");
+    } catch (e) {
+      console.error("handleLuBook error:", e);
+      setAlertMsg("預約寫入失敗：" + e.message);
+    }
   };
   const handleLuDelete = async (id) => {
-    await deleteDoc(doc(db, "luAppts", id));
-    setLuDetailModal(null);
+    try {
+      await deleteDoc(doc(db, "luAppts", id));
+      setLuDetailModal(null);
+    } catch (e) { console.error("lu delete error:", e); setAlertMsg("刪除失敗：" + e.message); }
   };
   const handleLuUpdate = async (id, ch) => {
-    await updateDoc(doc(db, "luAppts", id), ch);
-    setLuDetailModal(prev => prev?.id === id ? { ...prev, ...ch } : prev);
+    try {
+      await updateDoc(doc(db, "luAppts", id), ch);
+      setLuDetailModal(prev => prev?.id === id ? { ...prev, ...ch } : prev);
+    } catch (e) { console.error("lu update error:", e); setAlertMsg("更新失敗：" + e.message); }
   };
   const handleLuCopyDates = async (appt, targets) => {
     const batch = writeBatch(db);
@@ -1060,18 +1085,17 @@ export default function App() {
   // ── Config writers (wrap setters to sync to Firestore) ──
   const fireSetMainSlotCfg = (updater) => {
     const next = typeof updater === "function" ? updater(mainSlotCfg) : updater;
-    // Remove undefined values for Firestore
     const clean = {}; Object.entries(next).forEach(([k, v]) => { if (v !== undefined) clean[k] = v; });
-    setDoc(doc(db, "config", "mainSlotCfg"), clean);
+    setDoc(doc(db, "config", "mainSlotCfg"), clean).catch(e => { console.error("mainSlotCfg write error:", e); setAlertMsg("寫入失敗：" + e.message); });
   };
   const fireSetLuSlotCfg = (updater) => {
     const next = typeof updater === "function" ? updater(luSlotCfg) : updater;
     const clean = {}; Object.entries(next).forEach(([k, v]) => { if (v !== undefined) clean[k] = v; });
-    setDoc(doc(db, "config", "luSlotCfg"), clean);
+    setDoc(doc(db, "config", "luSlotCfg"), clean).catch(e => { console.error("luSlotCfg write error:", e); setAlertMsg("寫入失敗：" + e.message); });
   };
   const fireSetCs = (updater) => {
     const next = typeof updater === "function" ? updater(cs) : updater;
-    setDoc(doc(db, "config", "shifts"), next);
+    setDoc(doc(db, "config", "shifts"), next).catch(e => { console.error("shifts write error:", e); setAlertMsg("寫入失敗：" + e.message); });
   };
 
   const isAdmin = page === "admin";
@@ -1094,6 +1118,7 @@ export default function App() {
     </header>
 
     <main style={{ maxWidth: 1100, margin: "0 auto", padding: "14px 10px" }}>
+      {fireErr && <div style={{ background: "#FEE2E2", border: "1.5px solid #EF4444", borderRadius: 8, padding: "10px 14px", marginBottom: 12, color: "#991B1B", fontSize: 13, fontWeight: 600 }}>⚠️ {fireErr}</div>}
       {/* ── FRONT ── */}
       {page === "front" && frontTab === "book" && (<>
         <div style={{ background: "#FFFDF5", border: "1.5px solid #E0D5C1", borderRadius: 10, padding: "14px 16px", marginBottom: 12, fontSize: 13, color: "#5A4A3A", lineHeight: 1.8 }}>
