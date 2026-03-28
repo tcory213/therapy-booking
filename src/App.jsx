@@ -12,9 +12,10 @@ const THERAPISTS = [
 ];
 const TH_MAP = Object.fromEntries(THERAPISTS.map(t => [t.id, t]));
 TH_MAP["X"] = { id: "X", name: "不指定", color: "#8B7355" };
-const DURATIONS = [15, 30, 60];
+const DURATIONS = [15, 30, 45, 60];
 const TREAT_TYPES = [
   { id: "manual", label: "徒手治療" },
+  { id: "taping", label: "貼紮" },
   { id: "shockwave", label: "體外震波" },
   { id: "laser", label: "高能雷射" },
 ];
@@ -525,7 +526,7 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
   const [showPrint, setShowPrint] = useState(false);
   const printContent = useMemo(() => {
     const dateLabel = `${selDate.getFullYear()}/${selDate.getMonth() + 1}/${selDate.getDate()} ${WDAY[(selDate.getDay() + 6) % 7]}`;
-    const rows = []; SLOTS.forEach(time => { const starts = dayA.filter(a => a.time === time); starts.forEach(a => { const th = TH_MAP[a.therapist] || TH_MAP["X"]; const tid = th.id === "X" ? "?" : th.id; const ttLabel = a.treatType === "shockwave" ? "震波" : a.treatType === "laser" ? "雷射" : "徒手"; rows.push({ time: a.time, tid, color: th.color, patient: a.patient, birthday: a.birthday, duration: a.duration, ttLabel, onDuty: a.onDuty, selfRef: a.selfRef }); }); });
+    const rows = []; SLOTS.forEach(time => { const starts = dayA.filter(a => a.time === time); starts.forEach(a => { const th = TH_MAP[a.therapist] || TH_MAP["X"]; const tid = th.id === "X" ? "?" : th.id; const ttLabel = a.treatType === "shockwave" ? "震波" : a.treatType === "laser" ? "雷射" : a.treatType === "taping" ? "貼紮" : "徒手"; rows.push({ time: a.time, tid, color: th.color, patient: a.patient, birthday: a.birthday, duration: a.duration, ttLabel, onDuty: a.onDuty, selfRef: a.selfRef }); }); });
     return { dateLabel, rows };
   }, [selDate, dayA]);
   return (<div>
@@ -730,17 +731,17 @@ function LuAdminDetail({ appt, appts, onClose, onDelete, onUpdate, onAlert, onCo
   </div>);
 }
 
-function calcRevenue(dur) { return (dur / 15) * 300; }
+function calcRevenue(dur, tt) { return (dur / 15) * (tt === "taping" ? 150 : 300); }
 function calcPay(a) {
   if (!a.checkedIn) return 0;
   const tt = a.treatType || "manual";
   if (tt === "shockwave" || tt === "laser") return 100;
   const rate = a.onDuty ? (a.selfRef ? 0.7 : 0.4) : (a.selfRef ? 0.9 : 0.6);
-  return Math.round(calcRevenue(a.duration) * rate);
+  return Math.round(calcRevenue(a.duration, tt) * rate);
 }
 function calcLuPay(a) {
   if (!a.checkedIn) return 0;
-  return Math.round(calcRevenue(a.duration) * (a.selfRef ? 0.9 : 0.6));
+  return Math.round(calcRevenue(a.duration, "manual") * (a.selfRef ? 0.9 : 0.6));
 }
 
 function SalarySummary({ appts, luAppts, cs }) {
@@ -763,14 +764,16 @@ function SalarySummary({ appts, luAppts, cs }) {
     const checked = all.filter(a => a.checkedIn);
     const totalPay = checked.reduce((s, a) => s + calcPay(a), 0);
     const manualChecked = checked.filter(a => (a.treatType || "manual") === "manual");
+    const tapingChecked = checked.filter(a => a.treatType === "taping");
     const otherChecked = checked.filter(a => a.treatType === "shockwave" || a.treatType === "laser");
     return {
       ...t, allCount: all.length, checkedCount: checked.length, totalPay,
-      manualCount: manualChecked.length, otherCount: otherChecked.length,
+      manualCount: manualChecked.length, tapingCount: tapingChecked.length, otherCount: otherChecked.length,
       onCount: manualChecked.filter(a => a.onDuty).length, offCount: manualChecked.filter(a => !a.onDuty).length,
       selfCount: manualChecked.filter(a => a.selfRef).length, nsCount: manualChecked.filter(a => !a.selfRef).length,
       manualMin: manualChecked.reduce((s, a) => s + a.duration, 0),
       manualPay: manualChecked.reduce((s, a) => s + calcPay(a), 0),
+      tapingPay: tapingChecked.reduce((s, a) => s + calcPay(a), 0),
       otherPay: otherChecked.length * 100,
     };
   }), [monthAppts]);
@@ -790,15 +793,16 @@ function SalarySummary({ appts, luAppts, cs }) {
     };
   }, [monthLuAppts]);
 
-  // Co-duty bonus: for each checked manual therapy, other on-duty therapists get 5% of revenue
+  // Co-duty bonus: for each checked manual/taping therapy, other on-duty therapists get 5% of revenue
   const coDutyBonus = useMemo(() => {
     const bonus = {};
     THERAPISTS.forEach(t => { bonus[t.id] = 0; });
-    const checkedManual = monthAppts.filter(a => a.checkedIn && (a.treatType || "manual") === "manual" && a.therapist !== "X");
-    if (!checkedManual.length) return bonus;
+    const checkedEligible = monthAppts.filter(a => a.checkedIn && ((a.treatType || "manual") === "manual" || a.treatType === "taping") && a.therapist !== "X");
+    if (!checkedEligible.length) return bonus;
     const dateCache = {};
-    checkedManual.forEach(a => {
-      const revenue = calcRevenue(a.duration);
+    checkedEligible.forEach(a => {
+      const tt = a.treatType || "manual";
+      const revenue = calcRevenue(a.duration, tt);
       if (!dateCache[a.date]) dateCache[a.date] = new Date(a.date);
       const apptDate = dateCache[a.date];
       THERAPISTS.forEach(t => {
@@ -856,6 +860,7 @@ function SalarySummary({ appts, luAppts, cs }) {
               <div style={{ color: "#8B7355" }}>總預約</div><div style={{ fontWeight: 700, textAlign: "right" }}>{s2.allCount} 筆</div>
               <div style={{ color: "#2E7D6F" }}>已報到</div><div style={{ fontWeight: 700, textAlign: "right", color: "#2E7D6F" }}>{s2.checkedCount} 筆</div>
               <div style={{ color: "#8B7355" }}>徒手治療</div><div style={{ fontWeight: 600, textAlign: "right" }}>{s2.manualCount} 次 · {s2.manualMin} 分</div>
+              <div style={{ color: "#8B7355" }}>貼紮</div><div style={{ fontWeight: 600, textAlign: "right" }}>{s2.tapingCount} 次</div>
               <div style={{ color: "#8B7355" }}>震波/雷射</div><div style={{ fontWeight: 600, textAlign: "right" }}>{s2.otherCount} 次</div>
               {salaryUnlocked && coDutyBonus[s2.id] > 0 && <><div style={{ color: "#B8860B" }}>共班分潤</div><div style={{ fontWeight: 600, textAlign: "right", color: "#B8860B" }}>+${coDutyBonus[s2.id].toLocaleString()}</div></>}
               <div style={{ gridColumn: "1/3", borderTop: "1px solid #E0D5C1", paddingTop: 8, marginTop: 4 }}>
@@ -916,6 +921,10 @@ function SalarySummary({ appts, luAppts, cs }) {
             {(() => { const items = selDetail.filter(a => (a.treatType||"manual")==="manual" && !a.onDuty && !a.selfRef); return items.length > 0 ? <><div style={{ color: "#C2563A" }}>徒手·班外非自轉 (60%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPay(a),0).toLocaleString()}</div></> : null; })()}
             {(() => { const items = selDetail.filter(a => (a.treatType||"manual")==="manual" && a.onDuty && a.selfRef); return items.length > 0 ? <><div style={{ color: "#5B6ABF" }}>徒手·班內自轉 (70%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPay(a),0).toLocaleString()}</div></> : null; })()}
             {(() => { const items = selDetail.filter(a => (a.treatType||"manual")==="manual" && !a.onDuty && a.selfRef); return items.length > 0 ? <><div style={{ color: "#B8860B" }}>徒手·班外自轉 (90%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPay(a),0).toLocaleString()}</div></> : null; })()}
+            {(() => { const items = selDetail.filter(a => a.treatType==="taping" && a.onDuty && !a.selfRef); return items.length > 0 ? <><div style={{ color: "#2E7D6F" }}>貼紮·班內非自轉 (40%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPay(a),0).toLocaleString()}</div></> : null; })()}
+            {(() => { const items = selDetail.filter(a => a.treatType==="taping" && !a.onDuty && !a.selfRef); return items.length > 0 ? <><div style={{ color: "#C2563A" }}>貼紮·班外非自轉 (60%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPay(a),0).toLocaleString()}</div></> : null; })()}
+            {(() => { const items = selDetail.filter(a => a.treatType==="taping" && a.onDuty && a.selfRef); return items.length > 0 ? <><div style={{ color: "#5B6ABF" }}>貼紮·班內自轉 (70%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPay(a),0).toLocaleString()}</div></> : null; })()}
+            {(() => { const items = selDetail.filter(a => a.treatType==="taping" && !a.onDuty && a.selfRef); return items.length > 0 ? <><div style={{ color: "#B8860B" }}>貼紮·班外自轉 (90%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPay(a),0).toLocaleString()}</div></> : null; })()}
             {selSummary.otherCount > 0 && <><div style={{ color: "#8B7355" }}>震波/雷射 (固定100)</div><div style={{ textAlign: "right" }}>{selSummary.otherCount}</div><div style={{ textAlign: "right" }}>NT$ {selSummary.otherPay.toLocaleString()}</div></>}
             {coDutyBonus[selTh] > 0 && <><div style={{ color: "#B8860B" }}>共班分潤 (5%)</div><div style={{ textAlign: "right" }}>—</div><div style={{ textAlign: "right" }}>NT$ {coDutyBonus[selTh].toLocaleString()}</div></>}
             </>)}
@@ -943,8 +952,8 @@ function SalarySummary({ appts, luAppts, cs }) {
                   {selDetail.map(a => {
                     const isLu = selTh === "LU";
                     const tt = a.treatType || "manual";
-                    const ttLabel = tt === "shockwave" ? "震波" : tt === "laser" ? "雷射" : "徒手";
-                    const revenue = (isLu || tt === "manual") ? calcRevenue(a.duration) : "-";
+                    const ttLabel = tt === "shockwave" ? "震波" : tt === "laser" ? "雷射" : tt === "taping" ? "貼紮" : "徒手";
+                    const revenue = (isLu || tt === "manual" || tt === "taping") ? calcRevenue(a.duration, tt) : "-";
                     const pay = isLu ? calcLuPay(a) : calcPay(a);
                     return (
                       <tr key={a.id} style={{ borderBottom: "1px solid #EDE5D5" }}>
