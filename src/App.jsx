@@ -138,7 +138,7 @@ const actionBtn = { flex: 1, padding: 9, borderRadius: 7, cursor: "pointer", fon
 
 /* ═══════════════════════════════════════════ Main Booking Form ═══════════════════════════════════════════ */
 function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlotCfg, addExtra }) {
-  const [patient, setPatient] = useState(""); const [bday, setBday] = useState(""); const [dur, setDur] = useState(15);
+  const [patient, setPatient] = useState(""); const [bday, setBday] = useState(""); const [idNum, setIdNum] = useState(""); const [dur, setDur] = useState(15);
   const [treatType, setTreatType] = useState("manual");
   const [selTh, setSelTh] = useState(""); const [selfRef, setSelfRef] = useState(false); const [err, setErr] = useState("");
   const [confirmData, setConfirmData] = useState(null);
@@ -194,19 +194,17 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
   const selInfo = selTh === "X" ? null : availList.find(t => t.id === selTh);
 
   const finalBook = (data) => { onBook(data); onClose(); };
-  const doBook = (data) => {
-    if (!isAdmin) { setConfirmBook(data); return; }
-    finalBook(data);
-  };
+  const doBook = (data) => { finalBook(data); };
 
   const submit = () => {
     if (!patient.trim()) { setErr("請輸入患者姓名"); return; }
     if (!bday.trim() || bday.length !== 6) { setErr("請輸入民國年月日六碼"); return; }
+    if (!isAdmin && !idNum.trim()) { setErr("請輸入身分證字號"); return; }
     if (!selTh) { setErr("請選擇治療師"); return; }
     if (!validRange(time, curDur)) { setErr("超出營業時間"); return; }
     const isUnspecified = selTh === "X";
     const onDuty = isUnspecified ? true : !selInfo?.isOff;
-    const apptData = { id: Date.now(), date: ds, time, duration: curDur, therapist: selTh, patient: patient.trim(), birthday: bday.trim(), onDuty, selfRef, treatType };
+    const apptData = { id: Date.now(), date: ds, time, duration: curDur, therapist: selTh, patient: patient.trim(), birthday: bday.trim(), idNum: idNum.trim(), onDuty, selfRef, treatType };
 
     if (isAdmin && !isUnspecified && selInfo?.adminOverride) {
       const warnings = [];
@@ -231,6 +229,7 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
     <div style={{ background: "#F5EDDC", borderRadius: 7, padding: "8px 12px", display: "flex", gap: 14, fontSize: 12, color: "#5A4A3A" }}><span>📅 {ds}</span><span>🕐 {time}</span></div>
     <div><label style={lbl}>患者姓名 *</label><input value={patient} onChange={e => setPatient(e.target.value)} style={inp} placeholder="請輸入全名" /></div>
     <div><label style={lbl}>生日（民國年月日六碼）*</label><input value={bday} onChange={e => setBday(e.target.value.replace(/\D/g, "").slice(0, 6))} style={inp} placeholder="如 800515" maxLength={6} /></div>
+    <div><label style={lbl}>身分證字號 {isAdmin ? "" : "*"}</label><input value={idNum} onChange={e => setIdNum(e.target.value.toUpperCase())} style={inp} placeholder={isAdmin ? "（後台選填）" : "請輸入身分證字號"} maxLength={10} /></div>
 
     <div><label style={lbl}>治療項目</label>
       <div style={{ display: "flex", gap: 5 }}>
@@ -283,16 +282,15 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
     {err && <div style={{ color: "#C2563A", fontSize: 11, background: "#FFF0EB", padding: "5px 9px", borderRadius: 5 }}>{err}</div>}
     <button onClick={submit} disabled={!anyAvail && !isAdmin} style={{ padding: 11, borderRadius: 9, border: "none", cursor: (anyAvail || isAdmin) ? "pointer" : "not-allowed", background: (anyAvail || isAdmin) ? "linear-gradient(135deg, #C2563A, #A8432B)" : "#CCBFB0", color: "white", fontSize: 14, fontWeight: 700, fontFamily: "'Noto Sans TC', sans-serif" }}>確認預約</button>
     <ConfirmModal open={!!confirmData} message={confirmData?.message || ""} onOk={() => { doBook(confirmData.apptData); setConfirmData(null); }} onCancel={() => setConfirmData(null)} />
-    <ConfirmModal open={!!confirmBook} message="請再次確認預約時間、治療時長、治療師姓名。確認後若需修改或取消須來電。謝謝" onOk={() => { finalBook(confirmBook); setConfirmBook(null); }} onCancel={() => setConfirmBook(null)} />
+
   </div>);
 }
 
 /* ═══════════════════════════════════════════ 盧老師 Booking Form ═══════════════════════════════════════════ */
 function LuBookingForm({ date, time, appts, onBook, onClose, isAdmin, luSlotCfg }) {
-  const [patient, setPatient] = useState(""); const [bday, setBday] = useState(""); const [dur, setDur] = useState(15);
+  const [patient, setPatient] = useState(""); const [bday, setBday] = useState(""); const [idNum, setIdNum] = useState(""); const [dur, setDur] = useState(15);
   const [selfRef, setSelfRef] = useState(false);
   const [err, setErr] = useState(""); const [confirmBuf, setConfirmBuf] = useState(null);
-  const [confirmBook, setConfirmBook] = useState(null);
   const ds = fd(date);
   const occupied = useMemo(() => luSlotOccupied(appts, ds, time, dur, null), [appts, ds, time, dur]);
   const allOpen = useMemo(() => {
@@ -307,15 +305,17 @@ function LuBookingForm({ date, time, appts, onBook, onClose, isAdmin, luSlotCfg 
 
   const finalBook = (data) => { onBook(data); onClose(); };
   const doBook = () => {
-    if (!patient.trim()) { setErr("請輸入患者姓名"); return; } if (!bday.trim() || bday.length !== 6) { setErr("請輸入民國年月日六碼"); return; }
+    if (!patient.trim()) { setErr("請輸入患者姓名"); return; }
+    if (!bday.trim() || bday.length !== 6) { setErr("請輸入民國年月日六碼"); return; }
+    if (!isAdmin && !idNum.trim()) { setErr("請輸入身分證字號"); return; }
     if (!luValidRange(time, dur)) { setErr("超出盧獨立時段"); return; }
-    const data = { id: Date.now(), date: ds, time, duration: dur, patient: patient.trim(), birthday: bday.trim(), selfRef };
-    if (!isAdmin) { setConfirmBook(data); return; }
-    finalBook(data);
+    finalBook({ id: Date.now(), date: ds, time, duration: dur, patient: patient.trim(), birthday: bday.trim(), idNum: idNum.trim(), selfRef });
   };
   const submit = () => {
-    if (!patient.trim()) { setErr("請輸入患者姓名"); return; } if (!bday.trim() || bday.length !== 6) { setErr("請輸入民國年月日六碼"); return; }
-    if (isAdmin && hasBuf && !occupied) { setConfirmBuf({ patient: patient.trim(), birthday: bday.trim() }); return; }
+    if (!patient.trim()) { setErr("請輸入患者姓名"); return; }
+    if (!bday.trim() || bday.length !== 6) { setErr("請輸入民國年月日六碼"); return; }
+    if (!isAdmin && !idNum.trim()) { setErr("請輸入身分證字號"); return; }
+    if (isAdmin && hasBuf && !occupied) { setConfirmBuf({ patient: patient.trim(), birthday: bday.trim(), idNum: idNum.trim() }); return; }
     doBook();
   };
 
@@ -323,6 +323,7 @@ function LuBookingForm({ date, time, appts, onBook, onClose, isAdmin, luSlotCfg 
     <div style={{ background: "#E8F5F0", borderRadius: 7, padding: "8px 12px", display: "flex", gap: 14, fontSize: 12, color: "#1A6B5A" }}><span>📅 {ds}</span><span>🕐 {time}</span><span style={{ marginLeft: "auto", fontWeight: 600 }}>盧獨立時段</span></div>
     <div><label style={lbl}>患者姓名 *</label><input value={patient} onChange={e => setPatient(e.target.value)} style={inp} placeholder="請輸入全名" /></div>
     <div><label style={lbl}>生日（民國年月日六碼）*</label><input value={bday} onChange={e => setBday(e.target.value.replace(/\D/g, "").slice(0, 6))} style={inp} placeholder="如 800515" maxLength={6} /></div>
+    <div><label style={lbl}>身分證字號 {isAdmin ? "" : "*"}</label><input value={idNum} onChange={e => setIdNum(e.target.value.toUpperCase())} style={inp} placeholder={isAdmin ? "（後台選填）" : "請輸入身分證字號"} maxLength={10} /></div>
     <div><label style={lbl}>治療時長</label><div style={{ display: "flex", gap: 5 }}>{DURATIONS.map(d => (<button key={d} onClick={() => { setDur(d); setErr(""); }} style={{ flex: 1, padding: "7px 0", borderRadius: 7, cursor: "pointer", fontSize: 12, border: dur === d ? `2px solid ${LU_COLOR}` : "1.5px solid #D4C5A9", background: dur === d ? "#E8F5F0" : "#FFFDF5", color: dur === d ? LU_COLOR : "#5A4A3A", fontWeight: dur === d ? 700 : 500, fontFamily: "'Noto Sans TC', sans-serif" }}>{d} 分</button>))}</div></div>
     {isAdmin && <div><label style={lbl}>自轉／非自轉</label><div style={{ display: "flex", gap: 5 }}>{[{ v: true, l: "自轉" }, { v: false, l: "非自轉" }].map(o => (<button key={String(o.v)} onClick={() => setSelfRef(o.v)} style={{ flex: 1, padding: "7px 0", borderRadius: 7, cursor: "pointer", fontSize: 12, border: selfRef === o.v ? `2px solid ${LU_COLOR}` : "1.5px solid #D4C5A9", background: selfRef === o.v ? "#E8F5F0" : "#FFFDF5", color: selfRef === o.v ? LU_COLOR : "#5A4A3A", fontWeight: selfRef === o.v ? 700 : 500, fontFamily: "'Noto Sans TC', sans-serif" }}>{o.l}</button>))}</div></div>}
     {occupied && <div style={{ padding: 8, background: "#FFF5F2", borderRadius: 7, fontSize: 11, color: "#C2563A", border: "1px solid #E8C8C0" }}>此時段已有預約</div>}
@@ -330,8 +331,7 @@ function LuBookingForm({ date, time, appts, onBook, onClose, isAdmin, luSlotCfg 
     {!occupied && hasBuf && !isAdmin && <div style={{ padding: 8, background: "#FFF8E6", borderRadius: 7, fontSize: 11, color: "#B8860B", border: "1px solid #E8DCC0" }}>此時段需間隔緩衝</div>}
     {err && <div style={{ color: "#C2563A", fontSize: 11, background: "#FFF0EB", padding: "5px 9px", borderRadius: 5 }}>{err}</div>}
     <button onClick={submit} disabled={!canBook} style={{ padding: 11, borderRadius: 9, border: "none", cursor: canBook ? "pointer" : "not-allowed", background: canBook ? `linear-gradient(135deg, ${LU_COLOR}, #145A4A)` : "#CCBFB0", color: "white", fontSize: 14, fontWeight: 700, fontFamily: "'Noto Sans TC', sans-serif" }}>確認預約</button>
-    <ConfirmModal open={!!confirmBuf} message="此預約違反 15 分鐘間隔規定，確定仍要預約嗎？" onOk={() => { setConfirmBuf(null); finalBook({ id: Date.now(), date: ds, time, duration: dur, patient: confirmBuf.patient, birthday: confirmBuf.birthday, selfRef }); }} onCancel={() => setConfirmBuf(null)} />
-    <ConfirmModal open={!!confirmBook} message="請再次確認預約時間、治療時長。確認後若需修改或取消須來電。謝謝" onOk={() => { finalBook(confirmBook); setConfirmBook(null); }} onCancel={() => setConfirmBook(null)} />
+    <ConfirmModal open={!!confirmBuf} message="此預約違反 15 分鐘間隔規定，確定仍要預約嗎？" onOk={() => { setConfirmBuf(null); finalBook({ id: Date.now(), date: ds, time, duration: dur, patient: confirmBuf.patient, birthday: confirmBuf.birthday, idNum: confirmBuf.idNum || "", selfRef }); }} onCancel={() => setConfirmBuf(null)} />
   </div>);
 }
 
@@ -432,7 +432,8 @@ function FrontWeekGrid({ appts, selDate, onCellClick, mainSlotCfg, filterTh, cs 
     <tbody>{SLOTS.map((time, si) => { const isH = time.endsWith(":00"); const isBr = time === "14:00"; return (<tr key={time} style={{ ...(isBr ? { borderTop: "3px solid #C2563A" } : {}) }}><td style={{ padding: "2px 3px", textAlign: "center", background: isH ? "#F0E8D8" : "#F8F2E6", position: "sticky", left: 0, zIndex: 5, borderRight: "2px solid #D4C5A9", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", fontWeight: isH ? 700 : 400, color: isH ? "#3D2B1F" : "#8B7355", fontSize: isH ? 13 : 12, height: 28 }}>{time}</td>
       {wd.map((date, di) => { const cell = renderMap[`${si}-${di}`]; if (!cell || !cell.render) return null; if (cell.type === "blocked") return (<td key={di} rowSpan={cell.span} style={{ background: "#2A2A2A", color: "rgba(255,255,255,0.75)", textAlign: "center", verticalAlign: "middle", fontSize: 12, borderLeft: "1px solid #2A2A2A", borderTop: "none", padding: "4px 2px" }}>{cell.span >= 2 ? <span>未開放<br />或已占用</span> : <span>已占用</span>}</td>);
         const dim = cell.dimmed;
-        return (<td key={di} style={{ borderLeft: "1px solid #EDE5D5", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", padding: 0, height: 28, cursor: dim ? "default" : "pointer", background: dim ? "#E8E3D8" : "#FFFDF5", opacity: dim ? 0.5 : 1 }} onClick={() => !dim && onCellClick(date, cell.time)} onMouseEnter={e => { if (!dim) e.currentTarget.style.background = "#F0E0C8"; }} onMouseLeave={e => { if (!dim) e.currentTarget.style.background = "#FFFDF5"; }} />); })}</tr>); })}</tbody>
+        return (<td key={di} style={{ borderLeft: "1px solid #EDE5D5", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", padding: 0, height: 28, cursor: dim ? "default" : "pointer", background: dim ? "#E8E3D8" : "#FFFDF5", opacity: dim ? 0.65 : 1, textAlign: "center", verticalAlign: "middle", fontSize: 9, color: "#9A8878" }} onClick={() => !dim && onCellClick(date, cell.time)} onMouseEnter={e => { if (!dim) e.currentTarget.style.background = "#F0E0C8"; }} onMouseLeave={e => { if (!dim) e.currentTarget.style.background = "#FFFDF5"; }}>{dim ? "無班或
+須緩衝" : ""}</td>); })}</tr>); })}</tbody>
   </table></div>);
 }
 
@@ -457,18 +458,46 @@ function LuFrontWeekGrid({ appts, selDate, onCellClick, luSlotCfg }) {
 }
 
 /* ═══════════════════════════════════════════ Front Phone Lookup ═══════════════════════════════════════════ */
-function PhoneLookup({ appts, luAppts }) {
-  const [bday, setBday] = useState("");
-  const results = useMemo(() => { if (bday.length !== 6) return []; const today = fd(new Date()); const mainR = appts.filter(a => a.onDuty && a.birthday === bday && a.date >= today).map(a => ({ ...a, sys: "main" })); const luR = luAppts.filter(a => a.birthday === bday && a.date >= today).map(a => ({ ...a, sys: "lu" })); return [...mainR, ...luR].sort(sortByDateTime); }, [bday, appts, luAppts]);
+function PhoneLookup({ appts, luAppts, onDelete, onLuDelete }) {
+  const [idNum, setIdNum] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const q = idNum.trim().toUpperCase();
+  const results = useMemo(() => {
+    if (q.length < 2) return [];
+    const today = fd(new Date());
+    const mainR = appts.filter(a => a.onDuty && a.idNum && a.idNum.toUpperCase() === q && a.date >= today).map(a => ({ ...a, sys: "main" }));
+    const luR = luAppts.filter(a => a.idNum && a.idNum.toUpperCase() === q && a.date >= today).map(a => ({ ...a, sys: "lu" }));
+    return [...mainR, ...luR].sort(sortByDateTime);
+  }, [q, appts, luAppts]);
+  const handleDelete = () => {
+    if (!deleteTarget) return;
+    if (deleteTarget.sys === "lu") onLuDelete(deleteTarget.id);
+    else onDelete(deleteTarget.id);
+    setDeleteTarget(null);
+  };
   return (<div style={{ maxWidth: 500, margin: "0 auto" }}>
-    <div style={{ textAlign: "center", marginBottom: 20 }}><div style={{ fontSize: 42, marginBottom: 8 }}>🔍</div><h2 style={{ margin: 0, fontFamily: "'Noto Serif TC', serif", color: "#3D2B1F", fontSize: 21 }}>預約查詢</h2><p style={{ color: "#8B7355", fontSize: 15, margin: "6px 0 0 0" }}>輸入生日六碼查詢今日起的預約</p></div>
-    <input value={bday} onChange={e => setBday(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="輸入民國年月日六碼" style={{ width: "100%", padding: "14px 18px", borderRadius: 10, border: "1.5px solid #D4C5A9", fontSize: 19, background: "#FFFDF5", fontFamily: "'Noto Sans TC', sans-serif", boxSizing: "border-box", outline: "none", textAlign: "center", letterSpacing: 2 }} />
-    {bday.length > 0 && bday.length < 6 && <p style={{ textAlign: "center", fontSize: 14, color: "#B5A898", margin: "8px 0 0 0" }}>請輸入完整六碼</p>}
-    {bday.length === 6 && results.length === 0 && <div style={{ textAlign: "center", padding: "30px 0", color: "#8B7355" }}><div style={{ fontSize: 38, marginBottom: 8 }}>📭</div><p style={{ margin: 0, fontSize: 16 }}>查無今日以後的預約紀錄</p></div>}
+    <div style={{ textAlign: "center", marginBottom: 20 }}><div style={{ fontSize: 42, marginBottom: 8 }}>🔍</div><h2 style={{ margin: 0, fontFamily: "'Noto Serif TC', serif", color: "#3D2B1F", fontSize: 21 }}>預約查詢及取消</h2><p style={{ color: "#8B7355", fontSize: 15, margin: "6px 0 0 0" }}>輸入身分證字號查詢今日起的預約</p></div>
+    <input value={idNum} onChange={e => setIdNum(e.target.value.toUpperCase())} placeholder="輸入身分證字號" style={{ width: "100%", padding: "14px 18px", borderRadius: 10, border: "1.5px solid #D4C5A9", fontSize: 19, background: "#FFFDF5", fontFamily: "'Noto Sans TC', sans-serif", boxSizing: "border-box", outline: "none", textAlign: "center", letterSpacing: 2 }} maxLength={10} />
+    {q.length > 0 && q.length < 2 && <p style={{ textAlign: "center", fontSize: 14, color: "#B5A898", margin: "8px 0 0 0" }}>請輸入身分證字號</p>}
+    {q.length >= 2 && results.length === 0 && <div style={{ textAlign: "center", padding: "30px 0", color: "#8B7355" }}><div style={{ fontSize: 38, marginBottom: 8 }}>📭</div><p style={{ margin: 0, fontSize: 16 }}>查無今日以後的預約紀錄</p></div>}
     {results.length > 0 && <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}><p style={{ fontSize: 15, color: "#8B7355", margin: 0 }}>找到 {results.length} 筆</p>
       {results.map(a => { const isLu = a.sys === "lu"; const thObj = isLu ? null : (TH_MAP[a.therapist] || TH_MAP["X"]); const color = isLu ? LU_COLOR : thObj.color; return (<div key={a.id} style={{ background: "#FFFDF5", border: `1.5px solid ${color}40`, borderRadius: 10, padding: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}><div style={{ width: 28, height: 28, borderRadius: "50%", background: color, color: "white", fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" }}>{isLu ? "盧" : (a.therapist === "X" ? "?" : a.therapist)}</div><span style={{ fontWeight: 700, color: "#3D2B1F", fontSize: 17 }}>{isLu ? "盧獨立時段" : thObj.name}</span></div>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontSize: 15 }}><div><span style={{ color: "#8B7355" }}>日期：</span><strong>{a.date}</strong></div><div><span style={{ color: "#8B7355" }}>時間：</span><strong>{a.time}</strong></div><div><span style={{ color: "#8B7355" }}>時長：</span>{a.duration} 分鐘</div><div><span style={{ color: "#8B7355" }}>患者：</span>{maskN(a.patient)}</div></div></div>); })}</div>}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontSize: 15 }}><div><span style={{ color: "#8B7355" }}>日期：</span><strong>{a.date}</strong></div><div><span style={{ color: "#8B7355" }}>時間：</span><strong>{a.time}</strong></div><div><span style={{ color: "#8B7355" }}>時長：</span>{a.duration} 分鐘</div><div><span style={{ color: "#8B7355" }}>患者：</span>{maskN(a.patient)}</div></div>
+        <button onClick={() => setDeleteTarget(a)} style={{ marginTop: 10, width: "100%", padding: "8px 0", borderRadius: 7, border: "1.5px solid #E8C8C0", background: "#FFF5F2", color: "#C2563A", cursor: "pointer", fontWeight: 600, fontSize: 13, fontFamily: "'Noto Sans TC', sans-serif" }}>🗑 取消此預約</button>
+      </div>); })}</div>}
+    {deleteTarget && (<div style={{ position: "fixed", inset: 0, zIndex: 1100, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div onClick={() => setDeleteTarget(null)} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.3)" }} />
+      <div style={{ position: "relative", background: "#FFFDF5", borderRadius: 12, padding: "28px 32px", maxWidth: 380, width: "88%", boxShadow: "0 16px 60px rgba(0,0,0,0.2)", textAlign: "center" }}>
+        <div style={{ fontSize: 36, marginBottom: 12 }}>⚠️</div>
+        <p style={{ fontSize: 14, fontWeight: 600, color: "#3D2B1F", margin: "0 0 6px 0", lineHeight: 1.5 }}>確定要取消以下預約嗎？</p>
+        <p style={{ fontSize: 13, color: "#C2563A", margin: "0 0 18px 0" }}>{deleteTarget.date} {deleteTarget.time}｜{maskN(deleteTarget.patient)}</p>
+        <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
+          <button onClick={handleDelete} style={{ padding: "9px 24px", borderRadius: 8, border: "none", background: "#C2563A", color: "white", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>確認取消</button>
+          <button onClick={() => setDeleteTarget(null)} style={{ padding: "9px 24px", borderRadius: 8, border: "1.5px solid #D4C5A9", background: "#FFFDF5", color: "#5A4A3A", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>返回</button>
+        </div>
+      </div>
+    </div>)}
   </div>);
 }
 
@@ -1042,6 +1071,12 @@ export default function App() {
       setAdminDetailModal(null);
     } catch (e) { console.error("delete error:", e); setAlertMsg("刪除失敗：" + e.message); }
   };
+  const handleFrontDelete = async (id) => {
+    try { await deleteDoc(doc(db, "appts", id)); } catch (e) { console.error("front delete error:", e); setAlertMsg("取消失敗：" + e.message); }
+  };
+  const handleFrontLuDelete = async (id) => {
+    try { await deleteDoc(doc(db, "luAppts", id)); } catch (e) { console.error("front lu delete error:", e); setAlertMsg("取消失敗：" + e.message); }
+  };
   const handleUpdate = async (id, ch) => {
     try {
       await updateDoc(doc(db, "appts", id), ch);
@@ -1127,7 +1162,7 @@ export default function App() {
             {[{ k: "schedule", l: "排程表" }, { k: "lu", l: "盧獨立時段" }, { k: "salary", l: "薪資" }, { k: "shifts", l: "班表" }].map(t => (<button key={t.k} onClick={() => setAdminTab(t.k)} style={{ padding: "5px 10px", borderRadius: 5, border: "none", cursor: "pointer", background: adminTab === t.k ? (t.k === "lu" ? LU_COLOR : "#C2563A") : "rgba(255,255,255,0.1)", color: adminTab === t.k ? "white" : "#C4B49A", fontWeight: 600, fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}>{t.l}</button>))}
             <div style={{ width: 1, height: 18, background: "#5A4A3A", margin: "0 4px" }} /><button onClick={() => setPage("front")} style={{ padding: "5px 10px", borderRadius: 5, border: "1px solid #C4B49A55", background: "transparent", color: "#C4B49A", cursor: "pointer", fontSize: 13 }}>返回前台</button>
           </>) : (<>
-            {[{ k: "book", l: "📅 預約" }, { k: "lookup", l: "🔍 查詢" }].map(t => (<button key={t.k} onClick={() => setFrontTab(t.k)} style={{ padding: "6px 12px", borderRadius: 5, border: "none", cursor: "pointer", background: frontTab === t.k ? "#C2563A" : "rgba(255,255,255,0.1)", color: frontTab === t.k ? "white" : "#C4B49A", fontWeight: 600, fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}>{t.l}</button>))}
+            {[{ k: "book", l: "📅 預約" }, { k: "lookup", l: "🔍 查詢及取消" }].map(t => (<button key={t.k} onClick={() => setFrontTab(t.k)} style={{ padding: "6px 12px", borderRadius: 5, border: "none", cursor: "pointer", background: frontTab === t.k ? "#C2563A" : "rgba(255,255,255,0.1)", color: frontTab === t.k ? "white" : "#C4B49A", fontWeight: 600, fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}>{t.l}</button>))}
             <div style={{ width: 1, height: 18, background: "#5A4A3A", margin: "0 4px" }} /><button onClick={() => setPage("admin-gate")} style={{ padding: "5px 10px", borderRadius: 5, border: "1px solid #C4B49A55", background: "transparent", color: "#C4B49A", cursor: "pointer", fontSize: 10 }}>🔐 後台</button>
           </>)}
         </div>
@@ -1143,8 +1178,8 @@ export default function App() {
           <div style={{ paddingLeft: 4 }}>
             <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>1.</span> 初診患者請務必經過門診才可預約治療。若未經過門診，報到時本院可能取消您的預約。</div>
             <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>2.</span> 點選空白時段或特定治療師進行預約。當日不開放線上預約，請來電洽詢。</div>
-            <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>3.</span> 預約完成後，為保護個資，該空格將轉為黑色。請至右上角點選「查詢」，並輸入生日確認預約是否成功。</div>
-            <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>4.</span> 預約後若無法報到，請於前一天來電取消。若反覆未報到且未取消，將收回您預約的權限，以維護所有患者的權益。</div>
+            <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>3.</span> 預約完成後，為保護個資，該空格將轉為黑色。請點選「查詢及取消」，並輸入身分證字號查詢預約是否成功。</div>
+            <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>4.</span> 預約後若無法報到，請至少於一天前線上取消。若反覆未報到且未取消，將收回您預約的權限，以維護所有患者的權益。</div>
             <div><span style={{ color: "#C2563A", fontWeight: 700 }}>5.</span> 若連續顯示「此時段無可預約的治療師」，可能當月班表尚未安排，請耐心等待。謝謝。</div>
           </div>
         </div>
@@ -1152,7 +1187,7 @@ export default function App() {
 
       {page === "front" && frontTab === "lu" && (<><NavCtrl selDate={selDate} setSelDate={setSelDate} viewMode="week" setViewMode={() => {}} showDayView={false} /><div style={{ display: "flex", gap: 10, marginBottom: 10, padding: "7px 12px", background: "#F8FDFB", borderRadius: 7, border: `1px solid ${LU_COLOR}30`, fontSize: 14, alignItems: "center" }}><span style={{ fontWeight: 700, color: LU_COLOR }}>盧獨立時段</span><span style={{ color: "#8B7355" }}>14:00 - 20:45</span></div><LuFrontWeekGrid appts={luAppts} selDate={selDate} onCellClick={(d, t) => setLuBookingModal({ date: d, time: t })} luSlotCfg={luSlotCfg} /></>)}
 
-      {page === "front" && frontTab === "lookup" && <div style={{ paddingTop: 20 }}><PhoneLookup appts={appts} luAppts={luAppts} /></div>}
+      {page === "front" && frontTab === "lookup" && <div style={{ paddingTop: 20 }}><PhoneLookup appts={appts} luAppts={luAppts} onDelete={handleFrontDelete} onLuDelete={handleFrontLuDelete} /></div>}
       {page === "admin-gate" && <PwGate onAuth={() => setPage("admin")} />}
 
       {/* ── ADMIN ── */}
