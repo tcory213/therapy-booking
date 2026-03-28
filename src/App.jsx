@@ -50,6 +50,10 @@ function getPeriodState(arr, pk) { if (arr.includes(pk)) return "on"; if (arr.in
 function getPeriodStateAt(tid, date, time, cs) { const arr = getShiftArr(tid, date, cs); return getPeriodState(arr, timePeriod(time)); }
 function validRange(st, dur) { const s = toM(st); for (let i = 0; i < dur / 15; i++) { const m = s + i * 15; if (!((m >= M_SLOT_START && m < M_MORN_END) || (m >= M_AFT_START && m < M_SLOT_END))) return false; } return true; }
 function luValidRange(st, dur) { const s = toM(st); for (let i = 0; i < dur / 15; i++) { const m = s + i * 15; if (m < M_LU_START || m >= M_LU_END) return false; } return true; }
+// 盧獨立時段僅週一(1)、週二(2)、週四(4)；開放隔天～次月底
+function luWeekDates(base) { const all = weekDates(base); return [all[0], all[1], all[3]]; }
+function isLuDateOpen(ds) { const today = new Date(); const tom = new Date(today); tom.setDate(today.getDate() + 1); const nextMonthEnd = new Date(today.getFullYear(), today.getMonth() + 2, 0); return ds >= fd(tom) && ds <= fd(nextMonthEnd); }
+function isLuSlotClosed(ds, time, luSlotCfg) { return luSlotCfg[`${ds}-${time}`] === false; }
 
 /* ═══════════════════════════════════════════ Conflicts ═══════════════════════════════════════════ */
 function slotConflict(appts, ds, time, dur, exId, filterFn) {
@@ -294,12 +298,12 @@ function LuBookingForm({ date, time, appts, onBook, onClose, isAdmin, luSlotCfg 
   const allOpen = useMemo(() => {
     for (let i = 0; i < dur / 15; i++) {
       const t = fM(toM(time) + i * 15);
-      if (luSlotCfg[`${ds}-${t}`] === false) return false;
+      if (isLuSlotClosed(ds, t, luSlotCfg)) return false;
     }
     return true;
   }, [ds, time, dur, luSlotCfg]);
   const hasBuf = useMemo(() => luBufferConflict(appts, ds, time, dur, null), [appts, ds, time, dur]);
-  const canBook = !occupied && (isAdmin || (allOpen && !hasBuf));
+  const canBook = !occupied && (isAdmin || (isLuDateOpen(ds) && allOpen && !hasBuf));
 
   const finalBook = (data) => { onBook(data); onClose(); };
   const doBook = () => {
@@ -433,19 +437,20 @@ function FrontWeekGrid({ appts, selDate, onCellClick, mainSlotCfg, filterTh, cs 
 }
 
 function LuFrontWeekGrid({ appts, selDate, onCellClick, luSlotCfg }) {
-  const wd = useMemo(() => weekDates(selDate), [selDate]);
-  const today = useMemo(() => fd(new Date()), []);
+  const wd = useMemo(() => luWeekDates(selDate), [selDate]);
   const dsArr = useMemo(() => wd.map(d => fd(d)), [wd]);
-  const dayData = useMemo(() => wd.map((date, di) => { const ds = dsArr[di]; const isPast = ds <= today; return LU_SLOTS.map(time => {
-    if (isPast) return { time, blocked: true };
+  const LU_WDAY = ["週一", "週二", "週四"];
+  const dayData = useMemo(() => wd.map((date, di) => { const ds = dsArr[di]; const open = isLuDateOpen(ds); return LU_SLOTS.map(time => {
+    if (!open) return { time, blocked: true };
     const m = toM(time); const occ = appts.some(a => a.date === ds && m >= toM(a.time) && m < toM(a.time) + a.duration);
-    const closed = luSlotCfg[`${ds}-${time}`] === false;
+    const closed = isLuSlotClosed(ds, time, luSlotCfg);
     return { time, blocked: occ || closed };
-  }); }), [wd, dsArr, appts, luSlotCfg, today]);
-  const renderMap = useMemo(() => { const map = {}; for (let di = 0; di < 6; di++) { const col = dayData[di]; let i = 0; while (i < col.length) { if (col[i].blocked) { let j = i; while (j < col.length && col[j].blocked) j++; map[`${i}-${di}`] = { render: true, span: j - i, type: "blocked" }; for (let k = i + 1; k < j; k++) map[`${k}-${di}`] = { render: false }; i = j; } else { map[`${i}-${di}`] = { render: true, span: 1, type: "free", time: col[i].time }; i++; } } } return map; }, [dayData]);
-  return (<div style={{ overflowX: "auto", borderRadius: 9, border: `1px solid ${LU_COLOR}40` }}><table style={{ borderCollapse: "collapse", width: "100%", minWidth: 520, fontSize: 13, fontFamily: "'Noto Sans TC', sans-serif" }}>
+  }); }), [wd, dsArr, appts, luSlotCfg]);
+  const renderMap = useMemo(() => { const map = {}; for (let di = 0; di < 3; di++) { const col = dayData[di]; let i = 0; while (i < col.length) { if (col[i].blocked) { let j = i; while (j < col.length && col[j].blocked) j++; map[`${i}-${di}`] = { render: true, span: j - i, type: "blocked" }; for (let k = i + 1; k < j; k++) map[`${k}-${di}`] = { render: false }; i = j; } else { map[`${i}-${di}`] = { render: true, span: 1, type: "free", time: col[i].time }; i++; } } } return map; }, [dayData]);
+  const todayStr = useMemo(() => fd(new Date()), []);
+  return (<div style={{ overflowX: "auto", borderRadius: 9, border: `1px solid ${LU_COLOR}40` }}><table style={{ borderCollapse: "collapse", width: "100%", minWidth: 320, fontSize: 13, fontFamily: "'Noto Sans TC', sans-serif" }}>
     <thead><tr><th style={{ padding: "8px 4px", background: LU_COLOR, color: "white", position: "sticky", left: 0, zIndex: 10, minWidth: 48, width: 48, borderRight: `2px solid ${LU_COLOR}`, fontSize: 13 }}>時間</th>
-      {wd.map((date, di) => { const isT = dsArr[di] === today; return (<th key={di} style={{ padding: "6px 3px", background: isT ? "#1D8068" : LU_COLOR, color: "white", borderLeft: `1px solid ${LU_COLOR}88`, fontSize: 12, minWidth: 58, width: "16%" }}><div>{`${date.getMonth() + 1}/${date.getDate()}`}</div><div style={{ fontSize: 12, color: isT ? "#A0E8D0" : "#88CCB8", marginTop: 1 }}>{WDAY[di]}{isT && " 今"}</div></th>); })}</tr></thead>
+      {wd.map((date, di) => { const ds = dsArr[di]; const isT = ds === todayStr; return (<th key={di} style={{ padding: "6px 3px", background: isT ? "#1D8068" : LU_COLOR, color: "white", borderLeft: `1px solid ${LU_COLOR}88`, fontSize: 12, minWidth: 80, width: "33%" }}><div>{`${date.getMonth() + 1}/${date.getDate()}`}</div><div style={{ fontSize: 12, color: isT ? "#A0E8D0" : "#88CCB8", marginTop: 1 }}>{LU_WDAY[di]}{isT && " 今"}</div></th>); })}</tr></thead>
     <tbody>{LU_SLOTS.map((time, si) => { const isH = time.endsWith(":00"); return (<tr key={time}><td style={{ padding: "2px 3px", textAlign: "center", background: isH ? "#E8F5F0" : "#F2FAF7", position: "sticky", left: 0, zIndex: 5, borderRight: `2px solid ${LU_COLOR}40`, borderTop: isH ? `1px solid ${LU_COLOR}30` : "1px solid #E0EDE8", fontWeight: isH ? 700 : 400, color: isH ? LU_COLOR : "#6BA898", fontSize: isH ? 13 : 12, height: 28 }}>{time}</td>
       {wd.map((date, di) => { const cell = renderMap[`${si}-${di}`]; if (!cell || !cell.render) return null; if (cell.type === "blocked") return (<td key={di} rowSpan={cell.span} style={{ background: "#2A2A2A", color: "rgba(255,255,255,0.75)", textAlign: "center", verticalAlign: "middle", fontSize: 12, borderLeft: "1px solid #2A2A2A", borderTop: "none", padding: "4px 2px" }}>{cell.span >= 2 ? <span>未開放<br />或已占用</span> : <span>已占用</span>}</td>); return (<td key={di} style={{ borderLeft: "1px solid #E0EDE8", borderTop: isH ? `1px solid ${LU_COLOR}30` : "1px solid #E0EDE8", padding: 0, height: 28, cursor: "pointer", background: "#F8FDFB" }} onClick={() => onCellClick(date, cell.time)} onMouseEnter={e => e.currentTarget.style.background = "#DDF0E8"} onMouseLeave={e => e.currentTarget.style.background = "#F8FDFB"} />); })}</tr>); })}</tbody>
   </table></div>);
@@ -572,7 +577,7 @@ function LuAdminDayView({ appts, selDate, onCellClick, onApptClick, luSlotCfg, s
       <span style={{ marginLeft: "auto", fontSize: 10, color: "#8B7355" }}>點「開/關」切換時段開放</span>
     </div>
     <div style={{ borderRadius: 9, border: `1px solid ${LU_COLOR}30`, overflow: "hidden" }}><table style={{ borderCollapse: "collapse", width: "100%", fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif" }}><thead><tr><th style={{ padding: "9px 8px", background: LU_COLOR, color: "white", width: 55, textAlign: "center", borderRight: `2px solid ${LU_COLOR}` }}>時間</th><th style={{ padding: "9px 8px", background: LU_COLOR, color: "white", textAlign: "left" }}>預約 / 時段控制</th><th style={{ padding: "9px 8px", background: LU_COLOR, color: "white", width: 50, textAlign: "center" }}>開關</th></tr></thead><tbody>
-      {LU_SLOTS.map(time => { const isH = time.endsWith(":00"); const as = getStart(time); const aa = getAt(time); const occ = !!aa; const closed = luSlotCfg[`${ds}-${time}`] === false;
+      {LU_SLOTS.map(time => { const isH = time.endsWith(":00"); const as = getStart(time); const aa = getAt(time); const occ = !!aa; const closed = isLuSlotClosed(ds, time, luSlotCfg);
         return (<tr key={time} style={{ cursor: "pointer" }}><td style={{ padding: "3px 8px", textAlign: "center", background: isH ? "#E8F5F0" : "#F2FAF7", borderRight: `2px solid ${LU_COLOR}30`, borderTop: isH ? `1px solid ${LU_COLOR}30` : "1px solid #E0EDE8", fontWeight: isH ? 700 : 400, color: isH ? LU_COLOR : "#6BA898", height: 30 }}>{time}</td>
           <td onClick={() => occ ? onApptClick(aa) : !closed && onCellClick(selDate, time)} style={{ padding: 0, height: 30, borderTop: isH ? `1px solid ${LU_COLOR}30` : "1px solid #E0EDE8", background: closed ? "#F5F0E5" : occ ? `${LU_COLOR}10` : "#F8FDFB" }}
             onMouseEnter={e => { if (!occ && !closed) e.currentTarget.style.background = "#DDF0E8"; }} onMouseLeave={e => { if (!occ && !closed) e.currentTarget.style.background = "#F8FDFB"; }}>
@@ -589,18 +594,19 @@ function LuAdminDayView({ appts, selDate, onCellClick, onApptClick, luSlotCfg, s
 /* ═══════════════════════════════════════════ Shift Editor ═══════════════════════════════════════════ */
 /* ═══════════════════════════════════════════ Admin 盧老師 Week Grid ═══════════════════════════════════════════ */
 function LuAdminWeekGrid({ appts, selDate, onCellClick, onApptClick, luSlotCfg }) {
-  const wd = useMemo(() => weekDates(selDate), [selDate]);
+  const wd = useMemo(() => luWeekDates(selDate), [selDate]);
   const dsArr = useMemo(() => wd.map(d => fd(d)), [wd]);
   const todayStr = useMemo(() => fd(new Date()), []);
+  const LU_WDAY = ["週一", "週二", "週四"];
   const getStart = useCallback((ds, t) => appts.find(a => a.date === ds && a.time === t), [appts]);
   const getAt = useCallback((ds, t) => { const m = toM(t); return appts.find(a => a.date === ds && m >= toM(a.time) && m < toM(a.time) + a.duration); }, [appts]);
-  return (<div style={{ overflowX: "auto", borderRadius: 9, border: `1px solid ${LU_COLOR}40` }}><table style={{ borderCollapse: "collapse", width: "100%", minWidth: 480, fontSize: 10, fontFamily: "'Noto Sans TC', sans-serif" }}>
+  return (<div style={{ overflowX: "auto", borderRadius: 9, border: `1px solid ${LU_COLOR}40` }}><table style={{ borderCollapse: "collapse", width: "100%", minWidth: 320, fontSize: 10, fontFamily: "'Noto Sans TC', sans-serif" }}>
     <thead><tr><th style={{ padding: "7px 3px", background: LU_COLOR, color: "white", position: "sticky", left: 0, zIndex: 10, minWidth: 42, width: 42, borderRight: `2px solid ${LU_COLOR}`, fontSize: 10 }}>時間</th>
-      {wd.map((date, di) => { const isT = dsArr[di] === todayStr; return (<th key={di} style={{ padding: "5px 2px", background: isT ? "#1D8068" : LU_COLOR, color: "white", borderLeft: `1px solid ${LU_COLOR}88`, fontSize: 9, minWidth: 52, width: "16%" }}><div>{`${date.getMonth() + 1}/${date.getDate()}`}</div><div style={{ fontSize: 9, color: isT ? "#A0E8D0" : "#88CCB8", marginTop: 1 }}>{WDAY[di]}{isT && " 今"}</div></th>); })}</tr></thead>
+      {wd.map((date, di) => { const isT = dsArr[di] === todayStr; return (<th key={di} style={{ padding: "5px 2px", background: isT ? "#1D8068" : LU_COLOR, color: "white", borderLeft: `1px solid ${LU_COLOR}88`, fontSize: 9, minWidth: 80, width: "33%" }}><div>{`${date.getMonth() + 1}/${date.getDate()}`}</div><div style={{ fontSize: 9, color: isT ? "#A0E8D0" : "#88CCB8", marginTop: 1 }}>{LU_WDAY[di]}{isT && " 今"}</div></th>); })}</tr></thead>
     <tbody>{LU_SLOTS.map((time) => { const isH = time.endsWith(":00"); return (<tr key={time}><td style={{ padding: "1px 2px", textAlign: "center", background: isH ? "#E8F5F0" : "#F2FAF7", position: "sticky", left: 0, zIndex: 5, borderRight: `2px solid ${LU_COLOR}40`, borderTop: isH ? `1px solid ${LU_COLOR}30` : "1px solid #E0EDE8", fontWeight: isH ? 700 : 400, color: isH ? LU_COLOR : "#6BA898", fontSize: isH ? 10 : 9, height: 22 }}>{time}</td>
       {wd.map((date, di) => {
         const ds = dsArr[di]; const as = getStart(ds, time); const aa = getAt(ds, time); const occ = !!aa;
-        const closed = luSlotCfg[`${ds}-${time}`] === false;
+        const closed = isLuSlotClosed(ds, time, luSlotCfg);
         return (<td key={di} onClick={() => occ ? onApptClick(aa) : !closed && onCellClick(date, time)}
           style={{ borderLeft: "1px solid #E0EDE8", borderTop: isH ? `1px solid ${LU_COLOR}30` : "1px solid #E0EDE8", padding: 0, height: 22, cursor: occ || !closed ? "pointer" : "default", position: "relative", background: closed ? "#F0EBE0" : occ ? `${LU_COLOR}15` : "#F8FDFB" }}
           onMouseEnter={e => { if (!occ && !closed) e.currentTarget.style.background = "#DDF0E8"; }} onMouseLeave={e => { if (!occ && !closed) e.currentTarget.style.background = "#F8FDFB"; }}>
@@ -1135,10 +1141,11 @@ export default function App() {
         <div style={{ background: "#FFFDF5", border: "1.5px solid #E0D5C1", borderRadius: 10, padding: "14px 16px", marginBottom: 12, fontSize: 17, color: "#5A4A3A", lineHeight: 1.8 }}>
           <div style={{ fontWeight: 700, color: "#3D2B1F", fontSize: 19, marginBottom: 8, fontFamily: "'Noto Serif TC', serif" }}>📋 預約說明</div>
           <div style={{ paddingLeft: 4 }}>
-            <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>1.</span> 點選空白時段或特定治療師進行預約。當日不開放線上預約，請來電洽詢。</div>
-            <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>2.</span> 預約完成後，為保護個資，該空格將轉為黑色。請至右上角點選「查詢」，並輸入生日確認預約是否成功。</div>
-            <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>3.</span> 預約後若無法報到，請於前一天來電取消。若反覆未報到且未取消，將收回您預約的權限，以維護所有患者的權益。</div>
-            <div><span style={{ color: "#C2563A", fontWeight: 700 }}>4.</span> 若連續顯示「此時段無可預約的治療師」，可能當月班表尚未安排，請耐心等待。謝謝。</div>
+            <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>1.</span> 初診患者請務必經過門診才可預約治療。若未經過門診，報到時本院可能取消您的預約。</div>
+            <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>2.</span> 點選空白時段或特定治療師進行預約。當日不開放線上預約，請來電洽詢。</div>
+            <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>3.</span> 預約完成後，為保護個資，該空格將轉為黑色。請至右上角點選「查詢」，並輸入生日確認預約是否成功。</div>
+            <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>4.</span> 預約後若無法報到，請於前一天來電取消。若反覆未報到且未取消，將收回您預約的權限，以維護所有患者的權益。</div>
+            <div><span style={{ color: "#C2563A", fontWeight: 700 }}>5.</span> 若連續顯示「此時段無可預約的治療師」，可能當月班表尚未安排，請耐心等待。謝謝。</div>
           </div>
         </div>
         <NavCtrl selDate={selDate} setSelDate={setSelDate} viewMode="week" setViewMode={() => {}} showDayView={false} /><div style={{ display: "flex", gap: 10, marginBottom: 10, padding: "7px 12px", background: "#FFFDF5", borderRadius: 7, border: "1px solid #E0D5C1", fontSize: 14 }}><span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ display: "inline-block", width: 16, height: 12, borderRadius: 2, background: "#2A2A2A" }} /><span>未開放或已占用</span></span><span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ display: "inline-block", width: 16, height: 12, borderRadius: 2, background: "#FFFDF5", border: "1px solid #D4C5A9" }} /><span>可預約（點擊）</span></span></div><ThFilterBar filterTh={filterTh} setFilterTh={setFilterTh} showNames onLuClick={() => setLuChoiceModal(true)} /><FrontWeekGrid appts={appts} selDate={selDate} onCellClick={(d, t) => setBookingModal({ date: d, time: t })} mainSlotCfg={mainSlotCfg} filterTh={filterTh} cs={cs} /></>)}
