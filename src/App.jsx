@@ -793,16 +793,15 @@ function SalarySummary({ appts, luAppts, cs }) {
     };
   }, [monthLuAppts]);
 
-  // Co-duty bonus: for each checked manual/taping therapy, other on-duty therapists get 5% of revenue
+  // Co-duty bonus: for each checked manual therapy, other on-duty therapists get 5% of revenue
   const coDutyBonus = useMemo(() => {
     const bonus = {};
     THERAPISTS.forEach(t => { bonus[t.id] = 0; });
-    const checkedEligible = monthAppts.filter(a => a.checkedIn && ((a.treatType || "manual") === "manual" || a.treatType === "taping") && a.therapist !== "X");
+    const checkedEligible = monthAppts.filter(a => a.checkedIn && (a.treatType || "manual") === "manual" && a.therapist !== "X");
     if (!checkedEligible.length) return bonus;
     const dateCache = {};
     checkedEligible.forEach(a => {
-      const tt = a.treatType || "manual";
-      const revenue = calcRevenue(a.duration, tt);
+      const revenue = calcRevenue(a.duration, "manual");
       if (!dateCache[a.date]) dateCache[a.date] = new Date(a.date);
       const apptDate = dateCache[a.date];
       THERAPISTS.forEach(t => {
