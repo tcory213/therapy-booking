@@ -18,6 +18,7 @@ const TREAT_TYPES = [
   { id: "taping", label: "貼紮" },
   { id: "shockwave", label: "體外震波" },
   { id: "laser", label: "高能雷射" },
+  { id: "swlaser", label: "震波雷射各半" },
 ];
 const TREAT_MAP = Object.fromEntries(TREAT_TYPES.map(t => [t.id, t.label]));
 const ADMIN_PW = "hapi719";
@@ -93,6 +94,7 @@ function calcTreatDur(treats, mDur, swD, laserD) {
   if (treats.includes("taping")) d += 15;
   if (treats.includes("shockwave")) d += swD * 15;
   if (treats.includes("laser")) d += laserD * 15;
+  if (treats.includes("swlaser")) d += 15;
   return d;
 }
 
@@ -469,10 +471,28 @@ function AdminDetail({ appt, appts, onClose, onDelete, onUpdate, onAlert, onCopy
 }
 
 /* ═══════════════════════════════════════════ Front Week Grids ═══════════════════════════════════════════ */
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 600);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 600);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, []);
+  return isMobile;
+}
+
 function FrontWeekGrid({ appts, selDate, onCellClick, mainSlotCfg, filterTh, cs }) {
+  const isMobile = useIsMobile();
   const wd = useMemo(() => weekDates(selDate), [selDate]);
   const today = useMemo(() => fd(new Date()), []);
   const dsArr = useMemo(() => wd.map(d => fd(d)), [wd]);
+  // Mobile: show single-day card view
+  const [mobileDay, setMobileDay] = useState(() => {
+    const now = new Date(); const dow = now.getDay();
+    const offset = dow === 0 ? 0 : dow === 6 ? 5 : dow - 1;
+    return Math.min(offset, 5);
+  });
+
   const dayData = useMemo(() => wd.map((date, di) => { const ds = dsArr[di]; const isPast = ds <= today; return SLOTS.map(time => {
     if (isPast) return { time, blocked: true, dimmed: false };
     const occ = appts.some(a => a.date === ds && a.onDuty && toM(time) >= toM(a.time) && toM(time) < toM(a.time) + a.duration);
@@ -487,6 +507,50 @@ function FrontWeekGrid({ appts, selDate, onCellClick, mainSlotCfg, filterTh, cs 
     }
     return { time, blocked, dimmed };
   }); }), [wd, dsArr, appts, mainSlotCfg, filterTh, cs, today]);
+
+  // Mobile card view: show one day at a time
+  if (isMobile) {
+    const date = wd[mobileDay]; const ds = dsArr[mobileDay]; const slots = dayData[mobileDay];
+    const freePeriods = { m: [], a: [], e: [] };
+    slots.forEach(s => {
+      if (!s.blocked && !s.dimmed) {
+        const m = toM(s.time);
+        if (m < M_MORN_END) freePeriods.m.push(s.time);
+        else if (m < M_EVE_START) freePeriods.a.push(s.time);
+        else freePeriods.e.push(s.time);
+      }
+    });
+    const periodLabels = [{ k: "m", l: "🌅 上午", color: "#C2563A" }, { k: "a", l: "☀️ 下午", color: "#2E7D6F" }, { k: "e", l: "🌙 晚上", color: "#5B6ABF" }];
+    const isPast = ds <= today;
+    return (<div>
+      {/* Day tabs */}
+      <div style={{ display: "flex", gap: 3, marginBottom: 10, overflowX: "auto", paddingBottom: 4 }}>
+        {wd.map((d, di) => { const isT = dsArr[di] === today; const isSel = di === mobileDay; const isPastDay = dsArr[di] <= today;
+          return (<button key={di} onClick={() => setMobileDay(di)} style={{ flexShrink: 0, padding: "6px 10px", borderRadius: 7, border: isSel ? "2px solid #C2563A" : "1.5px solid #D4C5A9", background: isSel ? "#FFF0EB" : isPastDay ? "#F0EBE2" : "#FFFDF5", color: isSel ? "#C2563A" : isPastDay ? "#B5A898" : "#3D2B1F", fontWeight: isSel ? 700 : 500, fontSize: 12, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>
+            <div>{`${d.getMonth()+1}/${d.getDate()}`}</div>
+            <div style={{ fontSize: 10, color: isSel ? "#C2563A" : isT ? "#F0A080" : "#8B7355" }}>{WDAY[di]}{isT ? " 今" : ""}</div>
+          </button>);
+        })}
+      </div>
+      {/* Slot cards */}
+      {isPast ? <div style={{ textAlign: "center", padding: "20px 0", color: "#B5A898", fontSize: 14 }}>此日期不開放線上預約</div> :
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {periodLabels.map(({ k, l, color }) => {
+          const times = freePeriods[k];
+          if (times.length === 0 && k !== "m") return null;
+          return (<div key={k} style={{ background: "#FFFDF5", borderRadius: 9, border: "1px solid #E0D5C1", overflow: "hidden" }}>
+            <div style={{ padding: "8px 12px", background: `${color}12`, borderBottom: "1px solid #E0D5C1", fontWeight: 700, fontSize: 13, color }}>{l}</div>
+            {times.length === 0 ? <div style={{ padding: "10px 12px", color: "#B5A898", fontSize: 13 }}>此時段無可預約時段</div> :
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: 10 }}>
+              {times.map(t => (<button key={t} onClick={() => onCellClick(date, t)} style={{ padding: "8px 14px", borderRadius: 7, border: "1.5px solid #D4C5A9", background: "#FFFDF5", color: "#3D2B1F", cursor: "pointer", fontSize: 14, fontWeight: 500, fontFamily: "'Noto Sans TC', sans-serif" }}
+                onMouseEnter={e => e.currentTarget.style.background = "#F0E0C8"} onMouseLeave={e => e.currentTarget.style.background = "#FFFDF5"}>{t}</button>))}
+            </div>}
+          </div>);
+        })}
+      </div>}
+    </div>);
+  }
+
   const renderMap = useMemo(() => { const map = {}; for (let di = 0; di < 6; di++) { const col = dayData[di]; let i = 0; while (i < col.length) { if (col[i].blocked) { let j = i; while (j < col.length && col[j].blocked) j++; map[`${i}-${di}`] = { render: true, span: j - i, type: "blocked" }; for (let k = i + 1; k < j; k++) map[`${k}-${di}`] = { render: false }; i = j; } else { map[`${i}-${di}`] = { render: true, span: 1, type: "free", time: col[i].time, dimmed: col[i].dimmed }; i++; } } } return map; }, [dayData]);
   return (<div style={{ overflowX: "auto", borderRadius: 9, border: "1px solid #E0D5C1" }}><table style={{ borderCollapse: "collapse", width: "100%", minWidth: 520, fontSize: 13, fontFamily: "'Noto Sans TC', sans-serif" }}>
     <thead><tr><th style={{ padding: "8px 4px", background: "#3D2B1F", color: "#F5EDDC", position: "sticky", left: 0, zIndex: 10, minWidth: 48, width: 48, borderRight: "2px solid #5A4A3A", fontSize: 13 }}>時間</th>
@@ -526,7 +590,7 @@ function PhoneLookup({ appts, luAppts, onDelete, onLuDelete }) {
   const results = useMemo(() => {
     if (q.length < 2) return [];
     const today = fd(new Date());
-    const mainR = appts.filter(a => a.onDuty && a.idNum && a.idNum.toUpperCase() === q && a.date >= today).map(a => ({ ...a, sys: "main" }));
+    const mainR = appts.filter(a => a.idNum && a.idNum.toUpperCase() === q && a.date >= today).map(a => ({ ...a, sys: "main" }));
     const luR = luAppts.filter(a => a.idNum && a.idNum.toUpperCase() === q && a.date >= today).map(a => ({ ...a, sys: "lu" }));
     return [...mainR, ...luR].sort(sortByDateTime);
   }, [q, appts, luAppts]);
@@ -653,7 +717,100 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
   </div>);
 }
 
-/* ═══════════════════════════════════════════ Admin 盧老師 Day View + Slot Control ═══════════════════════════════════════════ */
+/* ═══════════════════════════════════════════ Admin Lookup ═══════════════════════════════════════════ */
+function AdminLookup({ appts, luAppts, onApptClick, onLuApptClick }) {
+  const [query, setQuery] = useState("");
+  const [mode, setMode] = useState("id"); // "id" | "bday"
+  const q = query.trim().toUpperCase();
+  const qRaw = query.trim();
+
+  const results = useMemo(() => {
+    if (qRaw.length < 2) return [];
+    if (mode === "id") {
+      const mainR = appts.filter(a => a.idNum && a.idNum.toUpperCase() === q).map(a => ({ ...a, sys: "main" }));
+      const luR = luAppts.filter(a => a.idNum && a.idNum.toUpperCase() === q).map(a => ({ ...a, sys: "lu" }));
+      return [...mainR, ...luR].sort(sortByDateTime);
+    } else {
+      const mainR = appts.filter(a => a.birthday && a.birthday === qRaw).map(a => ({ ...a, sys: "main" }));
+      const luR = luAppts.filter(a => a.birthday && a.birthday === qRaw).map(a => ({ ...a, sys: "lu" }));
+      return [...mainR, ...luR].sort(sortByDateTime);
+    }
+  }, [q, qRaw, mode, appts, luAppts]);
+
+  const today = fd(new Date());
+  const future = results.filter(a => a.date >= today);
+  const past = results.filter(a => a.date < today);
+
+  const rowStyle = { display: "grid", gridTemplateColumns: "auto 1fr auto auto auto auto", gap: "4px 10px", alignItems: "center", padding: "8px 12px", borderBottom: "1px solid #EDE5D5", cursor: "pointer", fontSize: 13 };
+
+  const renderRows = (list, isPast) => list.map(a => {
+    const isLu = a.sys === "lu";
+    const thObj = isLu ? null : (TH_MAP[a.therapist] || TH_MAP["X"]);
+    const color = isLu ? LU_COLOR : thObj.color;
+    return (
+      <div key={a.id} onClick={() => isLu ? onLuApptClick(a) : onApptClick(a)}
+        style={{ ...rowStyle, background: isPast ? "#F8F4EE" : "#FFFDF5", opacity: isPast ? 0.75 : 1 }}
+        onMouseEnter={e => e.currentTarget.style.background = isPast ? "#F0E8DC" : "#FFF0EB"}
+        onMouseLeave={e => e.currentTarget.style.background = isPast ? "#F8F4EE" : "#FFFDF5"}>
+        <div style={{ width: 24, height: 24, borderRadius: "50%", background: color, color: "white", fontWeight: 700, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{isLu ? "盧" : (thObj.id === "X" ? "?" : thObj.id)}</div>
+        <div>
+          <div style={{ fontWeight: 700, color: "#3D2B1F" }}>{a.patient} <span style={{ fontWeight: 400, fontSize: 11, color: "#8B7355" }}>生日：{a.birthday}</span></div>
+          <div style={{ fontSize: 11, color: "#8B7355" }}>{isLu ? "盧獨立時段" : thObj.name} · {isLu ? "班外" : (a.onDuty ? "班內" : "班外")} · {a.selfRef ? "自轉" : "非自轉"}</div>
+        </div>
+        <span style={{ fontSize: 12, color: "#3D2B1F", whiteSpace: "nowrap" }}>{a.date}</span>
+        <span style={{ fontSize: 12, color: "#3D2B1F" }}>{a.time}</span>
+        <span style={{ fontSize: 12, color: "#8B7355" }}>{a.duration}分</span>
+        <div style={{ display: "flex", gap: 4 }}>
+          {a.checkedIn && <span style={{ fontSize: 10, fontWeight: 700, color: "#2E7D6F", background: "#E6F5EE", padding: "1px 5px", borderRadius: 3 }}>✓到</span>}
+          {a.reconfirm && <span style={{ fontSize: 10, fontWeight: 700, color: "#5B6ABF", background: "#EEEEFF", padding: "1px 5px", borderRadius: 3 }}>再確認</span>}
+          <span style={{ fontSize: 10, color: "#8B7355" }}>{getApptTreatLabel(a)}</span>
+        </div>
+      </div>
+    );
+  });
+
+  return (
+    <div>
+      <div style={{ display: "flex", gap: 6, marginBottom: 12, alignItems: "center", flexWrap: "wrap" }}>
+        {[{ k: "id", l: "🪪 身分證字號" }, { k: "bday", l: "🎂 生日（民國六碼）" }].map(m => (
+          <button key={m.k} onClick={() => { setMode(m.k); setQuery(""); }}
+            style={{ padding: "7px 14px", borderRadius: 7, border: mode === m.k ? "2px solid #C2563A" : "1.5px solid #D4C5A9", background: mode === m.k ? "#FFF0EB" : "#FFFDF5", color: mode === m.k ? "#C2563A" : "#5A4A3A", fontWeight: mode === m.k ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>{m.l}</button>
+        ))}
+      </div>
+      <input value={query}
+        onChange={e => setQuery(mode === "id" ? e.target.value.toUpperCase() : e.target.value.replace(/\D/g, "").slice(0, 6))}
+        placeholder={mode === "id" ? "輸入身分證字號（完整）" : "輸入民國年月日，如 800515"}
+        maxLength={mode === "id" ? 10 : 6}
+        style={{ width: "100%", padding: "11px 16px", borderRadius: 9, border: "1.5px solid #D4C5A9", fontSize: 16, background: "#FFFDF5", fontFamily: "'Noto Sans TC', sans-serif", boxSizing: "border-box", outline: "none", letterSpacing: mode === "id" ? 2 : 0, marginBottom: 12 }} />
+
+      {qRaw.length >= 2 && results.length === 0 && (
+        <div style={{ textAlign: "center", padding: "30px 0", color: "#8B7355" }}>
+          <div style={{ fontSize: 36, marginBottom: 8 }}>📭</div>
+          <p style={{ margin: 0, fontSize: 15 }}>查無符合的預約紀錄</p>
+        </div>
+      )}
+
+      {results.length > 0 && (
+        <div style={{ borderRadius: 9, border: "1px solid #E0D5C1", overflow: "hidden" }}>
+          {/* 今日以後 */}
+          {future.length > 0 && (
+            <div>
+              <div style={{ padding: "6px 12px", background: "#F0F8F0", borderBottom: "1px solid #E0D5C1", fontSize: 12, fontWeight: 700, color: "#2E7D6F" }}>📅 今日起的預約（{future.length} 筆）— 點擊可管理</div>
+              {renderRows(future, false)}
+            </div>
+          )}
+          {/* 過去 */}
+          {past.length > 0 && (
+            <div>
+              <div style={{ padding: "6px 12px", background: "#F8F4EE", borderBottom: "1px solid #E0D5C1", fontSize: 12, fontWeight: 700, color: "#8B7355" }}>🗂 歷史紀錄（{past.length} 筆）— 點擊可管理</div>
+              {renderRows(past, true)}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 function LuAdminDayView({ appts, selDate, onCellClick, onApptClick, luSlotCfg, setLuSlotCfg }) {
   const ds = fd(selDate); const dayA = useMemo(() => appts.filter(a => a.date === ds), [appts, ds]);
   const getStart = useCallback(time => dayA.find(a => a.time === time), [dayA]);
@@ -801,6 +958,7 @@ function calcPay(a) {
   for (const tt of treats) {
     if (tt === "shockwave") total += getApptSwDoses(a) * 100;
     else if (tt === "laser") total += getApptLaserDoses(a) * 100;
+    else if (tt === "swlaser") total += 100;
     else if (tt === "manual") total += Math.round(calcRevenue(getApptManualDur(a), "manual") * rate);
     else if (tt === "taping") total += Math.round(calcRevenue(15, "taping") * rate);
   }
@@ -810,6 +968,7 @@ function calcPartialPay(a, forType) {
   if (!a.checkedIn) return 0;
   if (forType === "shockwave") return getApptSwDoses(a) * 100;
   if (forType === "laser") return getApptLaserDoses(a) * 100;
+  if (forType === "swlaser") return 100;
   const dur = forType === "manual" ? getApptManualDur(a) : 15;
   const rate = a.onDuty ? (a.selfRef ? 0.7 : 0.4) : (a.selfRef ? 0.9 : 0.6);
   return Math.round(calcRevenue(dur, forType) * rate);
@@ -842,17 +1001,19 @@ function SalarySummary({ appts, luAppts, cs }) {
     const tapingChecked = checked.filter(a => getApptTreats(a).includes("taping"));
     const swChecked = checked.filter(a => getApptTreats(a).includes("shockwave"));
     const laserChecked = checked.filter(a => getApptTreats(a).includes("laser"));
+    const swlaserChecked = checked.filter(a => getApptTreats(a).includes("swlaser"));
     const swTotalDoses = swChecked.reduce((s, a) => s + getApptSwDoses(a), 0);
     const laserTotalDoses = laserChecked.reduce((s, a) => s + getApptLaserDoses(a), 0);
     return {
       ...t, allCount: all.length, checkedCount: checked.length, totalPay,
-      manualCount: manualChecked.length, tapingCount: tapingChecked.length, otherCount: swTotalDoses + laserTotalDoses,
+      manualCount: manualChecked.length, tapingCount: tapingChecked.length,
+      otherCount: swTotalDoses + laserTotalDoses + swlaserChecked.length,
       onCount: manualChecked.filter(a => a.onDuty).length, offCount: manualChecked.filter(a => !a.onDuty).length,
       selfCount: manualChecked.filter(a => a.selfRef).length, nsCount: manualChecked.filter(a => !a.selfRef).length,
       manualMin: manualChecked.reduce((s, a) => s + getApptManualDur(a), 0),
       manualPay: manualChecked.reduce((s, a) => s + calcPartialPay(a, "manual"), 0),
       tapingPay: tapingChecked.reduce((s, a) => s + calcPartialPay(a, "taping"), 0),
-      otherPay: swTotalDoses * 100 + laserTotalDoses * 100,
+      otherPay: swTotalDoses * 100 + laserTotalDoses * 100 + swlaserChecked.length * 100,
     };
   }), [monthAppts]);
 
@@ -898,6 +1059,34 @@ function SalarySummary({ appts, luAppts, cs }) {
     return monthAppts.filter(a => a.therapist === selTh && a.checkedIn).sort(sortByDateTime);
   }, [selTh, monthAppts, monthLuAppts]);
 
+  const exportCSV = () => {
+    const rows = [["治療師", "日期", "時間", "患者", "生日", "項目", "時長(分)", "班別", "轉介", "收費", "薪資"]];
+    THERAPISTS.forEach(t => {
+      const detail = monthAppts.filter(a => a.therapist === t.id && a.checkedIn).sort(sortByDateTime);
+      detail.forEach(a => {
+        const treats = getApptTreats(a);
+        let revenue = 0;
+        if (treats.includes("manual")) revenue += calcRevenue(getApptManualDur(a), "manual");
+        if (treats.includes("taping")) revenue += calcRevenue(15, "taping");
+        rows.push([t.name, a.date, a.time, a.patient, a.birthday, getApptTreatLabel(a), a.duration, a.onDuty ? "班內" : "班外", a.selfRef ? "自轉" : "非自轉", revenue || "-", calcPay(a)]);
+      });
+      const s = summaries.find(s2 => s2.id === t.id);
+      const total = s ? s.totalPay + (coDutyBonus[t.id] || 0) : 0;
+      rows.push([t.name + " 小計", "", "", "", "", "", "", "", "", "", total]);
+      rows.push([]);
+    });
+    monthLuAppts.filter(a => a.checkedIn).sort(sortByDateTime).forEach(a => {
+      const rev = calcRevenue(a.duration, "manual");
+      rows.push(["盧獨立時段", a.date, a.time, a.patient, a.birthday, "徒手", a.duration, "班外", a.selfRef ? "自轉" : "非自轉", rev, calcLuPay(a)]);
+    });
+    rows.push(["盧獨立 小計", "", "", "", "", "", "", "", "", "", luSummary.totalPay]);
+    const csv = rows.map(r => r.map(c => `"${String(c ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a2 = document.createElement("a"); a2.href = url; a2.download = `薪資_${month}.csv`; a2.click();
+    URL.revokeObjectURL(url);
+  };
+
   const selSummary = selTh === "LU" ? luSummary : summaries.find(s => s.id === selTh);
   const selColor = selTh === "LU" ? LU_COLOR : (TH_MAP[selTh]?.color || "#888");
   const selName = selTh === "LU" ? "盧獨立時段" : (TH_MAP[selTh]?.name || "");
@@ -908,6 +1097,7 @@ function SalarySummary({ appts, luAppts, cs }) {
       <input type="month" value={month} onChange={e => { setMonth(e.target.value); setSelTh(null); }}
         style={{ padding: "6px 12px", borderRadius: 7, border: "1.5px solid #D4C5A9", fontSize: 14, background: "#FFFDF5", fontFamily: "'Noto Sans TC', sans-serif", outline: "none" }} />
       <span style={{ fontSize: 12, color: "#8B7355" }}>僅計入已報到個案</span>
+      <button onClick={exportCSV} style={{ padding: "5px 12px", borderRadius: 6, border: "1.5px solid #2E7D6F", background: "#E6F5EE", color: "#2E7D6F", cursor: "pointer", fontWeight: 600, fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif" }}>⬇ 匯出 CSV</button>
       <div style={{ marginLeft: "auto", display: "flex", gap: 5, alignItems: "center" }}>
         {salaryUnlocked ? (
           <span style={{ fontSize: 11, color: "#2E7D6F", fontWeight: 600 }}>🔓 金額已解鎖 <button onClick={() => setSalaryUnlocked(false)} style={{ marginLeft: 4, padding: "2px 8px", borderRadius: 4, border: "1px solid #D4C5A9", background: "#FFFDF5", color: "#8B7355", cursor: "pointer", fontSize: 10, fontFamily: "'Noto Sans TC', sans-serif" }}>鎖定</button></span>
@@ -1250,7 +1440,7 @@ export default function App() {
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}><div style={{ width: 32, height: 32, borderRadius: 7, background: "#C2563A", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🤲</div><h1 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#F5EDDC", fontFamily: "'Noto Serif TC', serif", letterSpacing: 1 }}>徒手治療預約{isAdmin && " — 後台"}</h1></div>
         <div style={{ display: "flex", gap: 3, alignItems: "center", flexWrap: "wrap" }}>
           {isAdmin ? (<>
-            {[{ k: "schedule", l: "排程表" }, { k: "lu", l: "盧獨立時段" }, { k: "salary", l: "薪資" }, { k: "shifts", l: "班表" }].map(t => (<button key={t.k} onClick={() => setAdminTab(t.k)} style={{ padding: "5px 10px", borderRadius: 5, border: "none", cursor: "pointer", background: adminTab === t.k ? (t.k === "lu" ? LU_COLOR : "#C2563A") : "rgba(255,255,255,0.1)", color: adminTab === t.k ? "white" : "#C4B49A", fontWeight: 600, fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}>{t.l}</button>))}
+            {[{ k: "schedule", l: "排程表" }, { k: "lu", l: "盧獨立時段" }, { k: "lookup", l: "🔍 查詢" }, { k: "salary", l: "薪資" }, { k: "shifts", l: "班表" }].map(t => (<button key={t.k} onClick={() => setAdminTab(t.k)} style={{ padding: "5px 10px", borderRadius: 5, border: "none", cursor: "pointer", background: adminTab === t.k ? (t.k === "lu" ? LU_COLOR : "#C2563A") : "rgba(255,255,255,0.1)", color: adminTab === t.k ? "white" : "#C4B49A", fontWeight: 600, fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}>{t.l}</button>))}
             <div style={{ width: 1, height: 18, background: "#5A4A3A", margin: "0 4px" }} /><button onClick={() => setPage("front")} style={{ padding: "5px 10px", borderRadius: 5, border: "1px solid #C4B49A55", background: "transparent", color: "#C4B49A", cursor: "pointer", fontSize: 13 }}>返回前台</button>
           </>) : (<>
             {[{ k: "book", l: "📅 預約" }, { k: "lookup", l: "🔍 查詢及取消" }].map(t => (<button key={t.k} onClick={() => setFrontTab(t.k)} style={{ padding: "6px 12px", borderRadius: 5, border: "none", cursor: "pointer", background: frontTab === t.k ? "#C2563A" : "rgba(255,255,255,0.1)", color: frontTab === t.k ? "white" : "#C4B49A", fontWeight: 600, fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}>{t.l}</button>))}
@@ -1291,6 +1481,7 @@ export default function App() {
 
       {isAdmin && adminTab === "salary" && <SalarySummary appts={appts} luAppts={luAppts} cs={cs} />}
       {isAdmin && adminTab === "shifts" && <ShiftEditor customShifts={cs} setCustomShifts={fireSetCs} />}
+      {isAdmin && adminTab === "lookup" && <AdminLookup appts={appts} luAppts={luAppts} onApptClick={a => setAdminDetailModal(a)} onLuApptClick={a => setLuDetailModal(a)} />}
     </main>
 
     {/* ── MODALS ── */}
