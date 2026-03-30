@@ -74,6 +74,28 @@ function luBufferConflict(appts, ds, time, dur, exId) { return bufferConflictGen
 
 /* ═══════════════════════════════════════════ Demo data removed — using Firestore ═══════════════════════════════════════════ */
 
+/* ═══════════════════════════════════════════ Multi-treat helpers ═══════════════════════════════════════════ */
+function getApptTreats(a) { return a.treats || [a.treatType || "manual"]; }
+function getApptManualDur(a) { if (a.manualDur !== undefined) return a.manualDur; return (a.treatType || "manual") === "manual" ? a.duration : 0; }
+function getApptSwDoses(a) { return a.swDoses || (a.treatType === "shockwave" ? 1 : 0); }
+function getApptLaserDoses(a) { return a.laserDoses || (a.treatType === "laser" ? 1 : 0); }
+function getApptTreatLabel(a) {
+  return getApptTreats(a).map(t => {
+    const label = TREAT_MAP[t] || t;
+    if (t === "shockwave") { const d = getApptSwDoses(a); return d > 1 ? `${label}×${d}` : label; }
+    if (t === "laser") { const d = getApptLaserDoses(a); return d > 1 ? `${label}×${d}` : label; }
+    return label;
+  }).join("+");
+}
+function calcTreatDur(treats, mDur, swD, laserD) {
+  let d = 0;
+  if (treats.includes("manual")) d += mDur;
+  if (treats.includes("taping")) d += 15;
+  if (treats.includes("shockwave")) d += swD * 15;
+  if (treats.includes("laser")) d += laserD * 15;
+  return d;
+}
+
 /* ═══════════════════════════════════════════ Shared UI ═══════════════════════════════════════════ */
 function Modal({ open, onClose, children, title }) {
   if (!open) return null;
@@ -139,36 +161,36 @@ const actionBtn = { flex: 1, padding: 9, borderRadius: 7, cursor: "pointer", fon
 
 /* ═══════════════════════════════════════════ Main Booking Form ═══════════════════════════════════════════ */
 function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlotCfg, addExtra }) {
-  const [patient, setPatient] = useState(""); const [bday, setBday] = useState(""); const [idNum, setIdNum] = useState(""); const [dur, setDur] = useState(15);
-  const [treatType, setTreatType] = useState("manual");
+  const [patient, setPatient] = useState(""); const [bday, setBday] = useState(""); const [idNum, setIdNum] = useState("");
+  const [selTreats, setSelTreats] = useState([]);
+  const [manualDur, setManualDur] = useState(15);
+  const [swDoses, setSwDoses] = useState(1);
+  const [laserDoses, setLaserDoses] = useState(1);
   const [selTh, setSelTh] = useState(""); const [selfRef, setSelfRef] = useState(false); const [err, setErr] = useState("");
   const [confirmData, setConfirmData] = useState(null);
-  const [confirmBook, setConfirmBook] = useState(null);
   const ds = fd(date);
 
-  const effectiveDurs = treatType === "manual" ? DURATIONS : [15];
-
-  // Auto-fix duration when switching treat type
-  const curDur = treatType !== "manual" ? 15 : dur;
+  const toggleTreat = (id) => { setSelTreats(prev => prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]); setSelTh(""); setErr(""); };
+  const totalDur = useMemo(() => calcTreatDur(selTreats, manualDur, swDoses, laserDoses), [selTreats, manualDur, swDoses, laserDoses]);
+  const overOnDutyLimit = totalDur > 30;
 
   const slotClosed = useMemo(() => {
-    if (isAdmin) return false;
-    for (let i = 0; i < curDur / 15; i++) {
+    if (isAdmin || totalDur === 0) return false;
+    for (let i = 0; i < totalDur / 15; i++) {
       const t = fM(toM(time) + i * 15);
       if (mainSlotCfg[`${ds}-${t}`] === false) return true;
     }
     return false;
-  }, [ds, time, curDur, mainSlotCfg, isAdmin]);
+  }, [ds, time, totalDur, mainSlotCfg, isAdmin]);
 
-  const onDutyOccupied = useMemo(() => onDutySlotConflict(appts, ds, time, curDur, null), [appts, ds, time, curDur]);
+  const onDutyOccupied = useMemo(() => totalDur > 0 ? onDutySlotConflict(appts, ds, time, totalDur, null) : false, [appts, ds, time, totalDur]);
 
   const availList = useMemo(() => THERAPISTS.map(t => {
     const st = getPeriodStateAt(t.id, date, time, cs);
     if (!st) return { ...t, available: false, adminOverride: false, reason: "無班", isOff: false };
     if (addExtra) {
-      // Show all therapists with shifts, warnings for conflicts but all selectable
       const isOff = st === "off";
-      const hasBuf = bufferConflict(appts, ds, time, curDur, t.id, null);
+      const hasBuf = totalDur > 0 ? bufferConflict(appts, ds, time, totalDur, t.id, null) : false;
       const hasExisting = appts.some(a => a.date === ds && a.therapist === t.id && toM(time) >= toM(a.time) && toM(time) < toM(a.time) + a.duration);
       const warns = [];
       if (hasExisting) warns.push("已有患者");
@@ -176,22 +198,29 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
       if (!isOff && onDutyOccupied) warns.push("班內已佔");
       return { ...t, available: true, adminOverride: warns.length > 0, warn: warns.join("·"), isOff };
     }
-    if (st === "off" && !isAdmin) return { ...t, available: false, adminOverride: false, reason: "班外", isOff: true };
     const isOff = st === "off";
-    const hasBuf = bufferConflict(appts, ds, time, curDur, t.id, null);
+    // On-duty 2-slot limit (non-admin)
+    if (!isOff && overOnDutyLimit && !isAdmin) return { ...t, available: false, adminOverride: false, reason: "超過2格", isOff: false };
+    if (st === "off" && !isAdmin) return { ...t, available: false, adminOverride: false, reason: "班外", isOff: true };
+    const hasBuf = totalDur > 0 ? bufferConflict(appts, ds, time, totalDur, t.id, null) : false;
     const hasSlotConf = !isOff && onDutyOccupied;
     if (isAdmin) {
-      if (hasSlotConf) return { ...t, available: true, adminOverride: true, warn: "時段已佔", isOff: false };
-      if (hasBuf) return { ...t, available: true, adminOverride: true, warn: "需緩衝", isOff };
+      const warns = [];
+      if (!isOff && overOnDutyLimit) warns.push("超過2格");
+      if (hasSlotConf) warns.push("時段已佔");
+      if (hasBuf) warns.push("需緩衝");
+      if (warns.length > 0) return { ...t, available: true, adminOverride: true, warn: warns.join("·"), isOff };
       return { ...t, available: true, adminOverride: false, isOff };
     } else {
       if (hasSlotConf) return { ...t, available: false, adminOverride: false, reason: "時段已佔", isOff: false };
       if (hasBuf) return { ...t, available: false, adminOverride: false, reason: "需緩衝", isOff };
       return { ...t, available: true, adminOverride: false, isOff };
     }
-  }), [date, time, curDur, appts, ds, cs, isAdmin, onDutyOccupied, addExtra]);
+  }), [date, time, totalDur, appts, ds, cs, isAdmin, onDutyOccupied, addExtra, overOnDutyLimit]);
 
-  const anyAvail = !slotClosed && availList.some(t => t.available);
+  // "不指定" is on-duty → also subject to 2-slot limit
+  const unspecAvail = !overOnDutyLimit || isAdmin;
+  const anyAvail = !slotClosed && (availList.some(t => t.available) || (!addExtra && unspecAvail));
   const selInfo = selTh === "X" ? null : availList.find(t => t.id === selTh);
 
   const finalBook = (data) => { onBook(data); onClose(); };
@@ -201,16 +230,20 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
     if (!patient.trim()) { setErr("請輸入患者姓名"); return; }
     if (!bday.trim() || bday.length !== 6) { setErr("請輸入民國年月日六碼"); return; }
     if (!isAdmin && !idNum.trim()) { setErr("請輸入身分證字號"); return; }
+    if (selTreats.length === 0) { setErr("請選擇至少一項治療項目"); return; }
     if (!selTh) { setErr("請選擇治療師"); return; }
-    if (!validRange(time, curDur)) { setErr("超出營業時間"); return; }
+    if (!validRange(time, totalDur)) { setErr("超出營業時間"); return; }
     const isUnspecified = selTh === "X";
     const onDuty = isUnspecified ? true : !selInfo?.isOff;
-    const apptData = { id: Date.now(), date: ds, time, duration: curDur, therapist: selTh, patient: patient.trim(), birthday: bday.trim(), idNum: idNum.trim(), onDuty, selfRef, treatType };
+    if (onDuty && overOnDutyLimit && !isAdmin) { setErr("班內治療最多占用 2 格（30 分鐘）"); return; }
+    const apptData = { id: Date.now(), date: ds, time, duration: totalDur, therapist: selTh, patient: patient.trim(), birthday: bday.trim(), idNum: idNum.trim(), onDuty, selfRef,
+      treats: selTreats, manualDur: selTreats.includes("manual") ? manualDur : 0, swDoses: selTreats.includes("shockwave") ? swDoses : 0, laserDoses: selTreats.includes("laser") ? laserDoses : 0 };
 
     if (isAdmin && !isUnspecified && selInfo?.adminOverride) {
       const warnings = [];
-      if (selInfo.warn === "時段已佔") warnings.push("此時段已有其他班內治療師");
-      if (selInfo.warn === "需緩衝") warnings.push("違反同治療師 15 分鐘緩衝規定");
+      if (selInfo.warn.includes("超過2格")) warnings.push("超過班內 2 格上限");
+      if (selInfo.warn.includes("時段已佔")) warnings.push("此時段已有其他班內治療師");
+      if (selInfo.warn.includes("需緩衝")) warnings.push("違反同治療師 15 分鐘緩衝規定");
       setConfirmData({ message: warnings.join("，且") + "，確定仍要預約嗎？", apptData });
       return;
     }
@@ -225,6 +258,20 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
     fontWeight: sel2 ? 700 : 500, fontSize: 11, opacity: avail ? 1 : 0.5,
     fontFamily: "'Noto Sans TC', sans-serif",
   });
+  const treatBtnStyle = (sel2) => ({
+    flex: 1, padding: "7px 0", borderRadius: 7, cursor: "pointer", fontSize: 12,
+    border: sel2 ? "2px solid #C2563A" : "1.5px solid #D4C5A9",
+    background: sel2 ? "#FFF0EB" : "#FFFDF5",
+    color: sel2 ? "#C2563A" : "#5A4A3A",
+    fontWeight: sel2 ? 700 : 500, fontFamily: "'Noto Sans TC', sans-serif",
+  });
+  const subBtnStyle = (sel2) => ({
+    flex: 1, padding: "6px 0", borderRadius: 6, cursor: "pointer", fontSize: 11,
+    border: sel2 ? "2px solid #C2563A" : "1.5px solid #D4C5A9",
+    background: sel2 ? "#FFF0EB" : "#FFFDF5",
+    color: sel2 ? "#C2563A" : "#5A4A3A",
+    fontWeight: sel2 ? 700 : 500, fontFamily: "'Noto Sans TC', sans-serif",
+  });
 
   return (<div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
     <div style={{ background: "#F5EDDC", borderRadius: 7, padding: "8px 12px", display: "flex", gap: 14, fontSize: 12, color: "#5A4A3A" }}><span>📅 {ds}</span><span>🕐 {time}</span></div>
@@ -232,36 +279,37 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
     <div><label style={lbl}>生日（民國年月日六碼）*</label><input value={bday} onChange={e => setBday(e.target.value.replace(/\D/g, "").slice(0, 6))} style={inp} placeholder="如 800515" maxLength={6} /></div>
     <div><label style={lbl}>身分證字號 {isAdmin ? "" : "*"}</label><input value={idNum} onChange={e => setIdNum(e.target.value.toUpperCase())} style={inp} placeholder={isAdmin ? "（後台選填）" : "請輸入身分證字號"} maxLength={10} /></div>
 
-    <div><label style={lbl}>治療項目</label>
-      <div style={{ display: "flex", gap: 5 }}>
-        {TREAT_TYPES.map(tt => (
-          <button key={tt.id} onClick={() => { setTreatType(tt.id); if (tt.id !== "manual") setDur(15); setSelTh(""); setErr(""); }} style={{
-            flex: 1, padding: "7px 0", borderRadius: 7, cursor: "pointer", fontSize: 12,
-            border: treatType === tt.id ? "2px solid #C2563A" : "1.5px solid #D4C5A9",
-            background: treatType === tt.id ? "#FFF0EB" : "#FFFDF5",
-            color: treatType === tt.id ? "#C2563A" : "#5A4A3A",
-            fontWeight: treatType === tt.id ? 700 : 500, fontFamily: "'Noto Sans TC', sans-serif",
-          }}>{tt.label}</button>
-        ))}
+    <div><label style={lbl}>治療項目（可複選）</label>
+      <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+        {TREAT_TYPES.map(tt => (<button key={tt.id} onClick={() => toggleTreat(tt.id)} style={treatBtnStyle(selTreats.includes(tt.id))}>{tt.label}</button>))}
       </div>
     </div>
 
-    <div><label style={lbl}>治療時長</label>
+    {selTreats.includes("manual") && <div><label style={lbl}>徒手治療時長</label>
       <div style={{ display: "flex", gap: 5 }}>
-        {effectiveDurs.map(d => (
-          <button key={d} onClick={() => { setDur(d); setSelTh(""); setErr(""); }} style={{
-            flex: 1, padding: "7px 0", borderRadius: 7, cursor: "pointer", fontSize: 12,
-            border: curDur === d ? "2px solid #C2563A" : "1.5px solid #D4C5A9",
-            background: curDur === d ? "#FFF0EB" : "#FFFDF5",
-            color: curDur === d ? "#C2563A" : "#5A4A3A",
-            fontWeight: curDur === d ? 700 : 500, fontFamily: "'Noto Sans TC', sans-serif",
-          }}>{d} 分</button>
-        ))}
+        {DURATIONS.map(d => (<button key={d} onClick={() => { setManualDur(d); setSelTh(""); setErr(""); }} style={subBtnStyle(manualDur === d)}>{d} 分</button>))}
       </div>
-    </div>
+    </div>}
+
+    {selTreats.includes("shockwave") && <div><label style={lbl}>體外震波份數</label>
+      <div style={{ display: "flex", gap: 5 }}>
+        {[1, 2].map(n => (<button key={n} onClick={() => { setSwDoses(n); setSelTh(""); setErr(""); }} style={subBtnStyle(swDoses === n)}>{n} 份（{n * 15}分）</button>))}
+      </div>
+    </div>}
+
+    {selTreats.includes("laser") && <div><label style={lbl}>高能雷射份數</label>
+      <div style={{ display: "flex", gap: 5 }}>
+        {[1, 2].map(n => (<button key={n} onClick={() => { setLaserDoses(n); setSelTh(""); setErr(""); }} style={subBtnStyle(laserDoses === n)}>{n} 份（{n * 15}分）</button>))}
+      </div>
+    </div>}
+
+    {selTreats.length > 0 && <div style={{ padding: "6px 10px", background: overOnDutyLimit ? "#FFF5F2" : "#F0F8F0", borderRadius: 7, fontSize: 12, border: `1px solid ${overOnDutyLimit ? "#E8C8C0" : "#C0E0D0"}`, color: overOnDutyLimit ? "#C2563A" : "#2E7D6F" }}>
+      占用 {totalDur / 15} 格（{totalDur} 分鐘）{overOnDutyLimit && " ⚠️ 超過班內上限 2 格"}
+    </div>}
 
     <div><label style={lbl}>選擇治療師</label>
-      {slotClosed ? <div style={{ padding: 8, background: "#FFF5F2", borderRadius: 7, fontSize: 11, color: "#C2563A", border: "1px solid #E8C8C0" }}>此時段未開放預約</div>
+      {selTreats.length === 0 ? <div style={{ padding: 8, background: "#FFF8E6", borderRadius: 7, fontSize: 11, color: "#B8860B", border: "1px solid #E8DCC0" }}>請先選擇治療項目</div>
+      : slotClosed ? <div style={{ padding: 8, background: "#FFF5F2", borderRadius: 7, fontSize: 11, color: "#C2563A", border: "1px solid #E8C8C0" }}>此時段未開放預約</div>
       : !anyAvail && !isAdmin ? <div style={{ padding: 8, background: "#FFF5F2", borderRadius: 7, fontSize: 11, color: "#C2563A", border: "1px solid #E8C8C0" }}>此時段無可預約的治療師</div>
       : <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
           {availList.map(t => { const sel2 = selTh === t.id; return (
@@ -272,9 +320,11 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
               {!t.available && <span style={{ display: "block", fontSize: 8, color: "#B5A898" }}>{t.reason}</span>}
             </button>
           ); })}
-          {!addExtra && <button onClick={() => { setSelTh("X"); setErr(""); }}
-            style={thBtnStyle(selTh === "X", "#8B7355", true)}>
+          {!addExtra && <button onClick={() => { if (unspecAvail) { setSelTh("X"); setErr(""); } }}
+            disabled={!unspecAvail}
+            style={thBtnStyle(selTh === "X", "#8B7355", unspecAvail)}>
             不指定
+            {!unspecAvail && <span style={{ display: "block", fontSize: 8, color: "#B5A898" }}>超過2格</span>}
           </button>}
         </div>}
     </div>
@@ -339,8 +389,11 @@ function LuBookingForm({ date, time, appts, onBook, onClose, isAdmin, luSlotCfg 
 /* ═══════════════════════════════════════════ Admin Detail (main) ═══════════════════════════════════════════ */
 function AdminDetail({ appt, appts, onClose, onDelete, onUpdate, onAlert, onCopyDates, onAddExtra }) {
   const [editing, setEditing] = useState(false); const [showCopy, setShowCopy] = useState(false); const [copySelected, setCopySelected] = useState([]);
-  const [th, setTh] = useState(appt.therapist); const [onDuty, setOnDuty] = useState(appt.onDuty); const [dur, setDur] = useState(appt.duration); const [selfRef, setSelfRef] = useState(appt.selfRef ?? false);
-  const [treatType, setTreatType] = useState(appt.treatType || "manual");
+  const [th, setTh] = useState(appt.therapist); const [onDuty, setOnDuty] = useState(appt.onDuty); const [selfRef, setSelfRef] = useState(appt.selfRef ?? false);
+  const [editTreats, setEditTreats] = useState(() => getApptTreats(appt));
+  const [editManualDur, setEditManualDur] = useState(() => getApptManualDur(appt) || 15);
+  const [editSwDoses, setEditSwDoses] = useState(() => getApptSwDoses(appt) || 1);
+  const [editLaserDoses, setEditLaserDoses] = useState(() => getApptLaserDoses(appt) || 1);
   const [note, setNote] = useState(appt.note || "");
   const [reconfirm, setReconfirm] = useState(appt.reconfirm ?? false);
   const [confirmSave, setConfirmSave] = useState(null);
@@ -348,18 +401,19 @@ function AdminDetail({ appt, appts, onClose, onDelete, onUpdate, onAlert, onCopy
   const sel = { padding: "6px 9px", borderRadius: 7, border: "1.5px solid #D4C5A9", fontSize: 12, background: "#FFFDF5", fontFamily: "'Noto Sans TC', sans-serif", outline: "none", cursor: "pointer", width: "100%" };
   const futureDates = useMemo(() => { const d = new Date(appt.date), dow = d.getDay(), y = d.getFullYear(), mo = d.getMonth(); const dim = new Date(y, mo + 1, 0).getDate(), dates = []; for (let day = d.getDate() + 1; day <= dim; day++) { const c = new Date(y, mo, day); if (c.getDay() === dow) dates.push(fd(c)); } return dates; }, [appt.date]);
 
-  const effectiveDur = treatType !== "manual" ? 15 : dur;
-  const allThOpts = [...THERAPISTS.map(t2 => ({ v: t2.id, l: t2.name })), { v: "X", l: "不指定" }];
-  const durOpts = treatType === "manual" ? DURATIONS.map(d => ({ v: String(d), l: `${d} 分鐘` })) : [{ v: "15", l: "15 分鐘" }];
+  const editDur = useMemo(() => calcTreatDur(editTreats, editManualDur, editSwDoses, editLaserDoses), [editTreats, editManualDur, editSwDoses, editLaserDoses]);
+  const toggleEditTreat = (id) => setEditTreats(prev => prev.includes(id) ? prev.filter(t2 => t2 !== id) : [...prev, id]);
 
-  const doSave = () => { onUpdate(appt.id, { therapist: th, onDuty, duration: effectiveDur, selfRef, treatType, note, reconfirm }); setEditing(false); };
+  const doSave = () => { onUpdate(appt.id, { therapist: th, onDuty, duration: editDur, selfRef, note, reconfirm,
+    treats: editTreats, manualDur: editTreats.includes("manual") ? editManualDur : 0, swDoses: editTreats.includes("shockwave") ? editSwDoses : 0, laserDoses: editTreats.includes("laser") ? editLaserDoses : 0 }); setEditing(false); };
 
   const save = () => {
-    if (!validRange(appt.time, effectiveDur)) { onAlert("修改後的時長超出營業時間"); return; }
+    if (editTreats.length === 0) { onAlert("請選擇至少一項治療項目"); return; }
+    if (!validRange(appt.time, editDur)) { onAlert("修改後的時長超出營業時間"); return; }
     if (th === "X") { doSave(); return; }
     const warnings = [];
-    if (onDuty && onDutySlotConflict(appts, appt.date, appt.time, effectiveDur, appt.id)) warnings.push("此時段已有其他班內治療師");
-    if (bufferConflict(appts, appt.date, appt.time, effectiveDur, th, appt.id)) warnings.push("違反同治療師 15 分鐘緩衝規定");
+    if (onDuty && onDutySlotConflict(appts, appt.date, appt.time, editDur, appt.id)) warnings.push("此時段已有其他班內治療師");
+    if (bufferConflict(appts, appt.date, appt.time, editDur, th, appt.id)) warnings.push("違反同治療師 15 分鐘緩衝規定");
     if (warnings.length > 0) { setConfirmSave(warnings.join("，且") + "，確定仍要儲存嗎？"); return; }
     doSave();
   };
@@ -382,18 +436,25 @@ function AdminDetail({ appt, appts, onClose, onDelete, onUpdate, onAlert, onCopy
     </div>
     {!editing && !showCopy && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontSize: 13, padding: "0 2px" }}>
       <div><span style={{ color: "#8B7355" }}>治療師：</span><strong>{TH_MAP[th]?.name || "不指定"}</strong></div>
-      <div><span style={{ color: "#8B7355" }}>項目：</span><strong>{TREAT_MAP[treatType] || "徒手治療"}</strong></div>
-      <div><span style={{ color: "#8B7355" }}>時長：</span><strong>{effectiveDur} 分</strong></div>
+      <div><span style={{ color: "#8B7355" }}>項目：</span><strong>{getApptTreatLabel(appt)}</strong></div>
+      <div><span style={{ color: "#8B7355" }}>時長：</span><strong>{appt.duration} 分（{appt.duration / 15} 格）</strong></div>
       <div><span style={{ color: "#8B7355" }}>班別：</span><strong style={{ color: onDuty ? "#2E7D6F" : "#C2563A" }}>{onDuty ? "班內" : "班外"}</strong></div>
       <div><span style={{ color: "#8B7355" }}>轉介：</span><strong style={{ color: selfRef ? "#5B6ABF" : "#B8860B" }}>{selfRef ? "自轉" : "非自轉"}</strong></div>
     </div>}
-    {editing && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "0 2px" }}>{[
-      { l: "治療師", v: th, set: setTh, opts: allThOpts },
-      { l: "治療項目", v: treatType, set: v => { setTreatType(v); if (v !== "manual") setDur(15); }, opts: TREAT_TYPES.map(t2 => ({ v: t2.id, l: t2.label })) },
-      { l: "時長", v: String(effectiveDur), set: v => setDur(Number(v)), opts: durOpts },
-      { l: "班內／班外", v: onDuty ? "on" : "off", set: v => setOnDuty(v === "on"), opts: [{ v: "on", l: "班內" }, { v: "off", l: "班外" }] },
-      { l: "自轉／非自轉", v: selfRef ? "self" : "other", set: v => setSelfRef(v === "self"), opts: [{ v: "self", l: "自轉" }, { v: "other", l: "非自轉" }] },
-    ].map(f => (<div key={f.l}><label style={{ fontSize: 11, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>{f.l}</label><select value={f.v} onChange={e => f.set(e.target.value)} style={sel}>{f.opts.map(o => <option key={o.v} value={o.v}>{o.l}</option>)}</select></div>))}</div>}
+    {editing && <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "0 2px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <div><label style={{ fontSize: 11, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>治療師</label><select value={th} onChange={e => setTh(e.target.value)} style={sel}>{[...THERAPISTS.map(t2 => <option key={t2.id} value={t2.id}>{t2.name}</option>), <option key="X" value="X">不指定</option>]}</select></div>
+        <div><label style={{ fontSize: 11, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>班內／班外</label><select value={onDuty ? "on" : "off"} onChange={e => setOnDuty(e.target.value === "on")} style={sel}><option value="on">班內</option><option value="off">班外</option></select></div>
+        <div><label style={{ fontSize: 11, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>自轉／非自轉</label><select value={selfRef ? "self" : "other"} onChange={e => setSelfRef(e.target.value === "self")} style={sel}><option value="self">自轉</option><option value="other">非自轉</option></select></div>
+      </div>
+      <div><label style={{ fontSize: 11, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>治療項目（可複選）</label>
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>{TREAT_TYPES.map(tt => { const s = editTreats.includes(tt.id); return (<button key={tt.id} onClick={() => toggleEditTreat(tt.id)} style={{ padding: "4px 10px", borderRadius: 6, cursor: "pointer", fontSize: 11, border: s ? "2px solid #C2563A" : "1.5px solid #D4C5A9", background: s ? "#FFF0EB" : "#FFFDF5", color: s ? "#C2563A" : "#5A4A3A", fontWeight: s ? 700 : 500, fontFamily: "'Noto Sans TC', sans-serif" }}>{tt.label}</button>); })}</div>
+      </div>
+      {editTreats.includes("manual") && <div><label style={{ fontSize: 11, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>徒手時長</label><select value={String(editManualDur)} onChange={e => setEditManualDur(Number(e.target.value))} style={sel}>{DURATIONS.map(d => <option key={d} value={String(d)}>{d} 分鐘</option>)}</select></div>}
+      {editTreats.includes("shockwave") && <div><label style={{ fontSize: 11, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>震波份數</label><select value={String(editSwDoses)} onChange={e => setEditSwDoses(Number(e.target.value))} style={sel}><option value="1">1 份</option><option value="2">2 份</option></select></div>}
+      {editTreats.includes("laser") && <div><label style={{ fontSize: 11, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>雷射份數</label><select value={String(editLaserDoses)} onChange={e => setEditLaserDoses(Number(e.target.value))} style={sel}><option value="1">1 份</option><option value="2">2 份</option></select></div>}
+      <div style={{ padding: "4px 8px", background: "#F0F8F0", borderRadius: 5, fontSize: 11, color: "#2E7D6F" }}>總占用：{editDur / 15} 格（{editDur} 分鐘）</div>
+    </div>}
     {showCopy && <div style={{ background: "#F5EDDC", borderRadius: 8, padding: 14 }}><div style={{ fontSize: 13, fontWeight: 600, color: "#3D2B1F", marginBottom: 10 }}>複製到本月其他{WDAY[(new Date(appt.date).getDay() + 6) % 7]}：</div>{futureDates.length === 0 ? <div style={{ fontSize: 13, color: "#8B7355" }}>本月已無後續相同星期</div> : <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>{futureDates.map(ds2 => { const sel2 = copySelected.includes(ds2); const conflict = appt.onDuty ? onDutySlotConflict(appts, ds2, appt.time, appt.duration, null) : false; const d = new Date(ds2); return (<button key={ds2} disabled={conflict} onClick={() => !conflict && setCopySelected(p => p.includes(ds2) ? p.filter(x => x !== ds2) : [...p, ds2])} style={{ padding: "8px 14px", borderRadius: 8, cursor: conflict ? "not-allowed" : "pointer", border: sel2 ? "2px solid #5B6ABF" : "1.5px solid #D4C5A9", background: conflict ? "#EDE5D5" : sel2 ? "#EEEEFF" : "#FFFDF5", color: conflict ? "#B5A898" : sel2 ? "#5B6ABF" : "#3D2B1F", fontWeight: sel2 ? 700 : 500, fontSize: 14, opacity: conflict ? 0.5 : 1, fontFamily: "'Noto Sans TC', sans-serif" }}>{`${d.getMonth() + 1}/${d.getDate()}`}{conflict && <span style={{ display: "block", fontSize: 9, color: "#B5A898" }}>衝突</span>}</button>); })}</div>}<div style={{ display: "flex", gap: 6 }}><button onClick={() => { if (copySelected.length) { onCopyDates(appt, copySelected); setShowCopy(false); setCopySelected([]); } }} disabled={!copySelected.length} style={{ flex: 1, padding: 9, borderRadius: 7, border: "none", background: copySelected.length ? "linear-gradient(135deg, #5B6ABF, #4A59A8)" : "#CCBFB0", color: "white", cursor: copySelected.length ? "pointer" : "not-allowed", fontWeight: 600, fontSize: 13, fontFamily: "'Noto Sans TC', sans-serif" }}>確認 ({copySelected.length})</button><button onClick={() => { setShowCopy(false); setCopySelected([]); }} style={{ padding: "9px 14px", borderRadius: 7, border: "1.5px solid #D4C5A9", background: "#FFFDF5", color: "#5A4A3A", cursor: "pointer", fontWeight: 600, fontSize: 13, fontFamily: "'Noto Sans TC', sans-serif" }}>取消</button></div></div>}
     {!editing && !showCopy && <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
       <button onClick={() => onUpdate(appt.id, { checkedIn: !appt.checkedIn })} style={{ flex: 1, padding: 9, borderRadius: 7, border: appt.checkedIn ? "1.5px solid #2E7D6F" : "1.5px solid #D4C5A9", background: appt.checkedIn ? "#E6F5EE" : "#FFFDF5", color: appt.checkedIn ? "#2E7D6F" : "#5A4A3A", cursor: "pointer", fontWeight: 600, fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}>{appt.checkedIn ? "✅ 報到成功" : "📋 報到"}</button>
@@ -526,7 +587,7 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
   const [showPrint, setShowPrint] = useState(false);
   const printContent = useMemo(() => {
     const dateLabel = `${selDate.getFullYear()}/${selDate.getMonth() + 1}/${selDate.getDate()} ${WDAY[(selDate.getDay() + 6) % 7]}`;
-    const rows = []; SLOTS.forEach(time => { const starts = dayA.filter(a => a.time === time); starts.forEach(a => { const th = TH_MAP[a.therapist] || TH_MAP["X"]; const tid = th.id === "X" ? "?" : th.id; const ttLabel = a.treatType === "shockwave" ? "震波" : a.treatType === "laser" ? "雷射" : a.treatType === "taping" ? "貼紮" : "徒手"; rows.push({ time: a.time, tid, color: th.color, patient: a.patient, birthday: a.birthday, duration: a.duration, ttLabel, onDuty: a.onDuty, selfRef: a.selfRef }); }); });
+    const rows = []; SLOTS.forEach(time => { const starts = dayA.filter(a => a.time === time); starts.forEach(a => { const th = TH_MAP[a.therapist] || TH_MAP["X"]; const tid = th.id === "X" ? "?" : th.id; const ttLabel = getApptTreatLabel(a); rows.push({ time: a.time, tid, color: th.color, patient: a.patient, birthday: a.birthday, duration: a.duration, ttLabel, onDuty: a.onDuty, selfRef: a.selfRef }); }); });
     return { dateLabel, rows };
   }, [selDate, dayA]);
   return (<div>
@@ -539,7 +600,7 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
         const closed = mainSlotCfg[`${ds}-${time}`] === false;
         return (<tr key={time} style={{ cursor: "pointer", ...(isBr ? { borderTop: "3px solid #C2563A" } : {}) }}><td onClick={() => !occ && !closed && onCellClick(selDate, time)} style={{ padding: "3px 8px", textAlign: "center", background: isH ? "#F0E8D8" : "#F8F2E6", borderRight: "2px solid #D4C5A9", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", fontWeight: isH ? 700 : 400, color: isH ? "#3D2B1F" : "#8B7355", height: 30 }}>{time}</td>
           <td style={{ padding: 0, minHeight: 30, borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", background: closed ? "#F5F0E5" : occ ? "#FAFAF5" : "#FFFDF5" }} onMouseEnter={e => { if (!occ && !closed) e.currentTarget.style.background = "#F0E0C8"; }} onMouseLeave={e => { if (!occ && !closed) e.currentTarget.style.background = closed ? "#F5F0E5" : "#FFFDF5"; }}>
-            {starts.map(as => { const th = TH_MAP[as.therapist] || TH_MAP["X"]; return (<div key={as.id} onClick={() => onApptClick(as)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", cursor: "pointer", borderLeft: as.checkedIn ? "3px solid #FFD700" : "3px solid transparent" }}><div style={{ width: 22, height: 22, borderRadius: "50%", background: th.color, flexShrink: 0, color: "white", fontWeight: 700, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>{th.id === "X" ? "?" : th.id}</div><span style={{ fontWeight: 700, color: "#3D2B1F", fontSize: 14 }}>{as.patient}</span>{as.note && <span style={{ color: "#8B7355", fontSize: 12, maxWidth: 80, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>({as.note})</span>}{as.reconfirm && <span style={{ fontSize: 12, fontWeight: 700, color: "#2E7D6F" }}>✓再確認</span>}<span style={{ color: "#8B7355", fontSize: 12 }}>{as.birthday}</span><span style={{ color: "#8B7355", fontSize: 12 }}>{as.duration}分</span><span style={{ fontSize: 12, fontWeight: 600, padding: "1px 5px", borderRadius: 3, background: "#F5F0E5", color: "#5A4A3A" }}>{TREAT_MAP[as.treatType] || "徒手"}</span><span style={{ fontSize: 12, fontWeight: 600, padding: "1px 5px", borderRadius: 3, background: as.onDuty ? "#E6F5EE" : "#FFF0EB", color: as.onDuty ? "#2E7D6F" : "#C2563A" }}>{as.onDuty ? "班內" : "班外"}</span><span style={{ fontSize: 12, fontWeight: 600, padding: "1px 5px", borderRadius: 3, background: as.selfRef ? "#EEEEFF" : "#FFF8E6", color: as.selfRef ? "#5B6ABF" : "#B8860B" }}>{as.selfRef ? "自轉" : "非自轉"}</span>{as.checkedIn && <span style={{ fontSize: 12, fontWeight: 700, color: "#FFD700" }}>✓到</span>}</div>); })}
+            {starts.map(as => { const th = TH_MAP[as.therapist] || TH_MAP["X"]; return (<div key={as.id} onClick={() => onApptClick(as)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", cursor: "pointer", borderLeft: as.checkedIn ? "3px solid #FFD700" : "3px solid transparent" }}><div style={{ width: 22, height: 22, borderRadius: "50%", background: th.color, flexShrink: 0, color: "white", fontWeight: 700, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>{th.id === "X" ? "?" : th.id}</div><span style={{ fontWeight: 700, color: "#3D2B1F", fontSize: 14 }}>{as.patient}</span>{as.note && <span style={{ color: "#8B7355", fontSize: 12, maxWidth: 80, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>({as.note})</span>}{as.reconfirm && <span style={{ fontSize: 12, fontWeight: 700, color: "#2E7D6F" }}>✓再確認</span>}<span style={{ color: "#8B7355", fontSize: 12 }}>{as.birthday}</span><span style={{ color: "#8B7355", fontSize: 12 }}>{as.duration}分</span><span style={{ fontSize: 12, fontWeight: 600, padding: "1px 5px", borderRadius: 3, background: "#F5F0E5", color: "#5A4A3A" }}>{getApptTreatLabel(as)}</span><span style={{ fontSize: 12, fontWeight: 600, padding: "1px 5px", borderRadius: 3, background: as.onDuty ? "#E6F5EE" : "#FFF0EB", color: as.onDuty ? "#2E7D6F" : "#C2563A" }}>{as.onDuty ? "班內" : "班外"}</span><span style={{ fontSize: 12, fontWeight: 600, padding: "1px 5px", borderRadius: 3, background: as.selfRef ? "#EEEEFF" : "#FFF8E6", color: as.selfRef ? "#5B6ABF" : "#B8860B" }}>{as.selfRef ? "自轉" : "非自轉"}</span>{as.checkedIn && <span style={{ fontSize: 12, fontWeight: 700, color: "#FFD700" }}>✓到</span>}</div>); })}
             {occ && starts.length === 0 && all.map(aa => { const th = TH_MAP[aa.therapist] || TH_MAP["X"]; return <div key={aa.id} onClick={() => onApptClick(aa)} style={{ padding: "2px 10px", display: "flex", alignItems: "center", cursor: "pointer" }}><div style={{ height: 1, width: 20, background: `${th.color}50` }} /><span style={{ fontSize: 9, color: `${th.color}88`, marginLeft: 6 }}>{aa.patient} 治療中</span></div>; })}
             {!occ && closed && <div style={{ padding: "0 10px", height: 30, display: "flex", alignItems: "center", fontSize: 13, color: "#B5A898" }}>已關閉</div>}
             {!occ && !closed && <div onClick={() => onCellClick(selDate, time)} style={{ padding: "0 10px", height: 30, display: "flex", alignItems: "center", fontSize: 13, color: "#C4B49A" }}>可預約</div>}
@@ -734,10 +795,24 @@ function LuAdminDetail({ appt, appts, onClose, onDelete, onUpdate, onAlert, onCo
 function calcRevenue(dur, tt) { return (dur / 15) * (tt === "taping" ? 150 : 300); }
 function calcPay(a) {
   if (!a.checkedIn) return 0;
-  const tt = a.treatType || "manual";
-  if (tt === "shockwave" || tt === "laser") return 100;
+  const treats = getApptTreats(a);
+  let total = 0;
   const rate = a.onDuty ? (a.selfRef ? 0.7 : 0.4) : (a.selfRef ? 0.9 : 0.6);
-  return Math.round(calcRevenue(a.duration, tt) * rate);
+  for (const tt of treats) {
+    if (tt === "shockwave") total += getApptSwDoses(a) * 100;
+    else if (tt === "laser") total += getApptLaserDoses(a) * 100;
+    else if (tt === "manual") total += Math.round(calcRevenue(getApptManualDur(a), "manual") * rate);
+    else if (tt === "taping") total += Math.round(calcRevenue(15, "taping") * rate);
+  }
+  return total;
+}
+function calcPartialPay(a, forType) {
+  if (!a.checkedIn) return 0;
+  if (forType === "shockwave") return getApptSwDoses(a) * 100;
+  if (forType === "laser") return getApptLaserDoses(a) * 100;
+  const dur = forType === "manual" ? getApptManualDur(a) : 15;
+  const rate = a.onDuty ? (a.selfRef ? 0.7 : 0.4) : (a.selfRef ? 0.9 : 0.6);
+  return Math.round(calcRevenue(dur, forType) * rate);
 }
 function calcLuPay(a) {
   if (!a.checkedIn) return 0;
@@ -763,18 +838,21 @@ function SalarySummary({ appts, luAppts, cs }) {
     const all = monthAppts.filter(a => a.therapist === t.id);
     const checked = all.filter(a => a.checkedIn);
     const totalPay = checked.reduce((s, a) => s + calcPay(a), 0);
-    const manualChecked = checked.filter(a => (a.treatType || "manual") === "manual");
-    const tapingChecked = checked.filter(a => a.treatType === "taping");
-    const otherChecked = checked.filter(a => a.treatType === "shockwave" || a.treatType === "laser");
+    const manualChecked = checked.filter(a => getApptTreats(a).includes("manual"));
+    const tapingChecked = checked.filter(a => getApptTreats(a).includes("taping"));
+    const swChecked = checked.filter(a => getApptTreats(a).includes("shockwave"));
+    const laserChecked = checked.filter(a => getApptTreats(a).includes("laser"));
+    const swTotalDoses = swChecked.reduce((s, a) => s + getApptSwDoses(a), 0);
+    const laserTotalDoses = laserChecked.reduce((s, a) => s + getApptLaserDoses(a), 0);
     return {
       ...t, allCount: all.length, checkedCount: checked.length, totalPay,
-      manualCount: manualChecked.length, tapingCount: tapingChecked.length, otherCount: otherChecked.length,
+      manualCount: manualChecked.length, tapingCount: tapingChecked.length, otherCount: swTotalDoses + laserTotalDoses,
       onCount: manualChecked.filter(a => a.onDuty).length, offCount: manualChecked.filter(a => !a.onDuty).length,
       selfCount: manualChecked.filter(a => a.selfRef).length, nsCount: manualChecked.filter(a => !a.selfRef).length,
-      manualMin: manualChecked.reduce((s, a) => s + a.duration, 0),
-      manualPay: manualChecked.reduce((s, a) => s + calcPay(a), 0),
-      tapingPay: tapingChecked.reduce((s, a) => s + calcPay(a), 0),
-      otherPay: otherChecked.length * 100,
+      manualMin: manualChecked.reduce((s, a) => s + getApptManualDur(a), 0),
+      manualPay: manualChecked.reduce((s, a) => s + calcPartialPay(a, "manual"), 0),
+      tapingPay: tapingChecked.reduce((s, a) => s + calcPartialPay(a, "taping"), 0),
+      otherPay: swTotalDoses * 100 + laserTotalDoses * 100,
     };
   }), [monthAppts]);
 
@@ -797,11 +875,11 @@ function SalarySummary({ appts, luAppts, cs }) {
   const coDutyBonus = useMemo(() => {
     const bonus = {};
     THERAPISTS.forEach(t => { bonus[t.id] = 0; });
-    const checkedEligible = monthAppts.filter(a => a.checkedIn && (a.treatType || "manual") === "manual" && a.therapist !== "X");
+    const checkedEligible = monthAppts.filter(a => a.checkedIn && getApptTreats(a).includes("manual") && a.therapist !== "X");
     if (!checkedEligible.length) return bonus;
     const dateCache = {};
     checkedEligible.forEach(a => {
-      const revenue = calcRevenue(a.duration, "manual");
+      const revenue = calcRevenue(getApptManualDur(a), "manual");
       if (!dateCache[a.date]) dateCache[a.date] = new Date(a.date);
       const apptDate = dateCache[a.date];
       THERAPISTS.forEach(t => {
@@ -860,7 +938,7 @@ function SalarySummary({ appts, luAppts, cs }) {
               <div style={{ color: "#2E7D6F" }}>已報到</div><div style={{ fontWeight: 700, textAlign: "right", color: "#2E7D6F" }}>{s2.checkedCount} 筆</div>
               <div style={{ color: "#8B7355" }}>徒手治療</div><div style={{ fontWeight: 600, textAlign: "right" }}>{s2.manualCount} 次 · {s2.manualMin} 分</div>
               <div style={{ color: "#8B7355" }}>貼紮</div><div style={{ fontWeight: 600, textAlign: "right" }}>{s2.tapingCount} 次</div>
-              <div style={{ color: "#8B7355" }}>震波/雷射</div><div style={{ fontWeight: 600, textAlign: "right" }}>{s2.otherCount} 次</div>
+              <div style={{ color: "#8B7355" }}>震波/雷射</div><div style={{ fontWeight: 600, textAlign: "right" }}>{s2.otherCount} 份</div>
               {salaryUnlocked && coDutyBonus[s2.id] > 0 && <><div style={{ color: "#B8860B" }}>共班分潤</div><div style={{ fontWeight: 600, textAlign: "right", color: "#B8860B" }}>+${coDutyBonus[s2.id].toLocaleString()}</div></>}
               <div style={{ gridColumn: "1/3", borderTop: "1px solid #E0D5C1", paddingTop: 8, marginTop: 4 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -916,15 +994,15 @@ function SalarySummary({ appts, luAppts, cs }) {
               {luSummary.nsCount > 0 && <><div style={{ color: "#C2563A" }}>班外非自轉 (60%)</div><div style={{ textAlign: "right" }}>{luSummary.nsCount}</div><div style={{ textAlign: "right" }}>NT$ {luSummary.nsPay.toLocaleString()}</div></>}
               {luSummary.selfCount > 0 && <><div style={{ color: "#B8860B" }}>班外自轉 (90%)</div><div style={{ textAlign: "right" }}>{luSummary.selfCount}</div><div style={{ textAlign: "right" }}>NT$ {luSummary.selfPay.toLocaleString()}</div></>}
             </>) : (<>
-            {(() => { const items = selDetail.filter(a => (a.treatType||"manual")==="manual" && a.onDuty && !a.selfRef); return items.length > 0 ? <><div style={{ color: "#2E7D6F" }}>徒手·班內非自轉 (40%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPay(a),0).toLocaleString()}</div></> : null; })()}
-            {(() => { const items = selDetail.filter(a => (a.treatType||"manual")==="manual" && !a.onDuty && !a.selfRef); return items.length > 0 ? <><div style={{ color: "#C2563A" }}>徒手·班外非自轉 (60%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPay(a),0).toLocaleString()}</div></> : null; })()}
-            {(() => { const items = selDetail.filter(a => (a.treatType||"manual")==="manual" && a.onDuty && a.selfRef); return items.length > 0 ? <><div style={{ color: "#5B6ABF" }}>徒手·班內自轉 (70%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPay(a),0).toLocaleString()}</div></> : null; })()}
-            {(() => { const items = selDetail.filter(a => (a.treatType||"manual")==="manual" && !a.onDuty && a.selfRef); return items.length > 0 ? <><div style={{ color: "#B8860B" }}>徒手·班外自轉 (90%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPay(a),0).toLocaleString()}</div></> : null; })()}
-            {(() => { const items = selDetail.filter(a => a.treatType==="taping" && a.onDuty && !a.selfRef); return items.length > 0 ? <><div style={{ color: "#2E7D6F" }}>貼紮·班內非自轉 (40%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPay(a),0).toLocaleString()}</div></> : null; })()}
-            {(() => { const items = selDetail.filter(a => a.treatType==="taping" && !a.onDuty && !a.selfRef); return items.length > 0 ? <><div style={{ color: "#C2563A" }}>貼紮·班外非自轉 (60%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPay(a),0).toLocaleString()}</div></> : null; })()}
-            {(() => { const items = selDetail.filter(a => a.treatType==="taping" && a.onDuty && a.selfRef); return items.length > 0 ? <><div style={{ color: "#5B6ABF" }}>貼紮·班內自轉 (70%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPay(a),0).toLocaleString()}</div></> : null; })()}
-            {(() => { const items = selDetail.filter(a => a.treatType==="taping" && !a.onDuty && a.selfRef); return items.length > 0 ? <><div style={{ color: "#B8860B" }}>貼紮·班外自轉 (90%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPay(a),0).toLocaleString()}</div></> : null; })()}
-            {selSummary.otherCount > 0 && <><div style={{ color: "#8B7355" }}>震波/雷射 (固定100)</div><div style={{ textAlign: "right" }}>{selSummary.otherCount}</div><div style={{ textAlign: "right" }}>NT$ {selSummary.otherPay.toLocaleString()}</div></>}
+            {(() => { const items = selDetail.filter(a => getApptTreats(a).includes("manual") && a.onDuty && !a.selfRef); return items.length > 0 ? <><div style={{ color: "#2E7D6F" }}>徒手·班內非自轉 (40%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPartialPay(a,"manual"),0).toLocaleString()}</div></> : null; })()}
+            {(() => { const items = selDetail.filter(a => getApptTreats(a).includes("manual") && !a.onDuty && !a.selfRef); return items.length > 0 ? <><div style={{ color: "#C2563A" }}>徒手·班外非自轉 (60%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPartialPay(a,"manual"),0).toLocaleString()}</div></> : null; })()}
+            {(() => { const items = selDetail.filter(a => getApptTreats(a).includes("manual") && a.onDuty && a.selfRef); return items.length > 0 ? <><div style={{ color: "#5B6ABF" }}>徒手·班內自轉 (70%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPartialPay(a,"manual"),0).toLocaleString()}</div></> : null; })()}
+            {(() => { const items = selDetail.filter(a => getApptTreats(a).includes("manual") && !a.onDuty && a.selfRef); return items.length > 0 ? <><div style={{ color: "#B8860B" }}>徒手·班外自轉 (90%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPartialPay(a,"manual"),0).toLocaleString()}</div></> : null; })()}
+            {(() => { const items = selDetail.filter(a => getApptTreats(a).includes("taping") && a.onDuty && !a.selfRef); return items.length > 0 ? <><div style={{ color: "#2E7D6F" }}>貼紮·班內非自轉 (40%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPartialPay(a,"taping"),0).toLocaleString()}</div></> : null; })()}
+            {(() => { const items = selDetail.filter(a => getApptTreats(a).includes("taping") && !a.onDuty && !a.selfRef); return items.length > 0 ? <><div style={{ color: "#C2563A" }}>貼紮·班外非自轉 (60%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPartialPay(a,"taping"),0).toLocaleString()}</div></> : null; })()}
+            {(() => { const items = selDetail.filter(a => getApptTreats(a).includes("taping") && a.onDuty && a.selfRef); return items.length > 0 ? <><div style={{ color: "#5B6ABF" }}>貼紮·班內自轉 (70%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPartialPay(a,"taping"),0).toLocaleString()}</div></> : null; })()}
+            {(() => { const items = selDetail.filter(a => getApptTreats(a).includes("taping") && !a.onDuty && a.selfRef); return items.length > 0 ? <><div style={{ color: "#B8860B" }}>貼紮·班外自轉 (90%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPartialPay(a,"taping"),0).toLocaleString()}</div></> : null; })()}
+            {selSummary.otherCount > 0 && <><div style={{ color: "#8B7355" }}>震波/雷射 (100/份)</div><div style={{ textAlign: "right" }}>{selSummary.otherCount} 份</div><div style={{ textAlign: "right" }}>NT$ {selSummary.otherPay.toLocaleString()}</div></>}
             {coDutyBonus[selTh] > 0 && <><div style={{ color: "#B8860B" }}>共班分潤 (5%)</div><div style={{ textAlign: "right" }}>—</div><div style={{ textAlign: "right" }}>NT$ {coDutyBonus[selTh].toLocaleString()}</div></>}
             </>)}
 
@@ -950,9 +1028,15 @@ function SalarySummary({ appts, luAppts, cs }) {
                 <tbody>
                   {selDetail.map(a => {
                     const isLu = selTh === "LU";
-                    const tt = a.treatType || "manual";
-                    const ttLabel = tt === "shockwave" ? "震波" : tt === "laser" ? "雷射" : tt === "taping" ? "貼紮" : "徒手";
-                    const revenue = (isLu || tt === "manual" || tt === "taping") ? calcRevenue(a.duration, tt) : "-";
+                    const ttLabel = isLu ? "徒手" : getApptTreatLabel(a);
+                    const treats = getApptTreats(a);
+                    let revenue = 0;
+                    if (isLu) { revenue = calcRevenue(a.duration, "manual"); }
+                    else {
+                      if (treats.includes("manual")) revenue += calcRevenue(getApptManualDur(a), "manual");
+                      if (treats.includes("taping")) revenue += calcRevenue(15, "taping");
+                    }
+                    const showRevenue = isLu || treats.includes("manual") || treats.includes("taping");
                     const pay = isLu ? calcLuPay(a) : calcPay(a);
                     return (
                       <tr key={a.id} style={{ borderBottom: "1px solid #EDE5D5" }}>
@@ -964,7 +1048,7 @@ function SalarySummary({ appts, luAppts, cs }) {
                         <td style={{ padding: "5px 8px" }}>{a.duration}分</td>
                         {!isLu && <td style={{ padding: "5px 8px" }}><span style={{ color: a.onDuty ? "#2E7D6F" : "#C2563A", fontWeight: 600 }}>{a.onDuty ? "班內" : "班外"}</span></td>}
                         <td style={{ padding: "5px 8px" }}><span style={{ color: a.selfRef ? "#5B6ABF" : "#B8860B", fontWeight: 600 }}>{a.selfRef ? "自轉" : "非自轉"}</span></td>
-                        {salaryUnlocked && <td style={{ padding: "5px 8px", textAlign: "right" }}>{typeof revenue === "number" ? `$${revenue}` : "-"}</td>}
+                        {salaryUnlocked && <td style={{ padding: "5px 8px", textAlign: "right" }}>{showRevenue ? `$${revenue}` : "-"}</td>}
                         {salaryUnlocked && <td style={{ padding: "5px 8px", textAlign: "right", fontWeight: 700, color: "#C2563A" }}>${pay}</td>}
                       </tr>
                     );
