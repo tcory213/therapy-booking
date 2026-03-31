@@ -283,7 +283,7 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
 
     <div><label style={lbl}>治療項目（可複選）</label>
       <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-        {TREAT_TYPES.map(tt => (<button key={tt.id} onClick={() => toggleTreat(tt.id)} style={treatBtnStyle(selTreats.includes(tt.id))}>{tt.label}</button>))}
+        {TREAT_TYPES.filter(tt => isAdmin || tt.id !== "taping").map(tt => (<button key={tt.id} onClick={() => toggleTreat(tt.id)} style={treatBtnStyle(selTreats.includes(tt.id))}>{tt.label}</button>))}
       </div>
     </div>
 
@@ -373,6 +373,9 @@ function LuBookingForm({ date, time, appts, onBook, onClose, isAdmin, luSlotCfg 
   };
 
   return (<div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    <div style={{ background: "#FFF8E6", border: "1.5px solid #E8DCC0", borderRadius: 8, padding: "10px 13px", fontSize: 12, color: "#5A4A3A", lineHeight: 1.7 }}>
+      <span style={{ fontWeight: 700, color: "#B8860B" }}>📌 注意：</span>此表單僅限預約徒手。若須預約震波請回到大預約表，並選擇不指定治療師，並於報到時跟櫃台說有同時約徒手及震波。
+    </div>
     <div style={{ background: "#E8F5F0", borderRadius: 7, padding: "8px 12px", display: "flex", gap: 14, fontSize: 12, color: "#1A6B5A" }}><span>📅 {ds}</span><span>🕐 {time}</span><span style={{ marginLeft: "auto", fontWeight: 600 }}>盧獨立時段</span></div>
     <div><label style={lbl}>患者姓名 *</label><input value={patient} onChange={e => setPatient(e.target.value)} style={inp} placeholder="請輸入全名" /></div>
     <div><label style={lbl}>生日（民國年月日六碼）*</label><input value={bday} onChange={e => setBday(e.target.value.replace(/\D/g, "").slice(0, 6))} style={inp} placeholder="如 800515" maxLength={6} /></div>
@@ -494,35 +497,35 @@ function FrontWeekGrid({ appts, selDate, onCellClick, mainSlotCfg, filterTh, cs 
   });
 
   const dayData = useMemo(() => wd.map((date, di) => { const ds = dsArr[di]; const isPast = ds <= today; return SLOTS.map(time => {
-    if (isPast) return { time, blocked: true, dimmed: false };
+    if (isPast) return { time, blocked: true, dimmed: false, isBuffer: false };
     const occ = appts.some(a => a.date === ds && a.onDuty && toM(time) >= toM(a.time) && toM(time) < toM(a.time) + a.duration);
     const closed = mainSlotCfg[`${ds}-${time}`] === false;
     const blocked = occ || closed;
-    let dimmed = false;
+    let dimmed = false; let isBuffer = false;
     if (filterTh && !blocked) {
       const st = getPeriodStateAt(filterTh, date, time, cs);
       if (st !== "on") dimmed = true;
-      else if (bufferConflict(appts, ds, time, 15, filterTh, null)) dimmed = true;
+      else if (bufferConflict(appts, ds, time, 15, filterTh, null)) { dimmed = true; isBuffer = true; }
       else if (onDutySlotConflict(appts, ds, time, 15, null)) dimmed = true;
     }
-    return { time, blocked, dimmed };
+    return { time, blocked, dimmed, isBuffer };
   }); }), [wd, dsArr, appts, mainSlotCfg, filterTh, cs, today]);
 
   // Mobile card view: show one day at a time
   if (isMobile) {
     const date = wd[mobileDay]; const ds = dsArr[mobileDay]; const slots = dayData[mobileDay];
     const freePeriods = { m: [], a: [], e: [] };
+    const bufPeriods = { m: [], a: [], e: [] };
     slots.forEach(s => {
-      if (!s.blocked && !s.dimmed) {
-        const m = toM(s.time);
-        if (m < M_MORN_END) freePeriods.m.push(s.time);
-        else if (m < M_EVE_START) freePeriods.a.push(s.time);
-        else freePeriods.e.push(s.time);
-      }
+      const m = toM(s.time);
+      const pk = m < M_MORN_END ? "m" : m < M_EVE_START ? "a" : "e";
+      if (!s.blocked && !s.dimmed) freePeriods[pk].push(s.time);
+      else if (!s.blocked && s.isBuffer) bufPeriods[pk].push(s.time);
     });
     const periodLabels = [{ k: "m", l: "🌅 上午", color: "#C2563A" }, { k: "a", l: "☀️ 下午", color: "#2E7D6F" }, { k: "e", l: "🌙 晚上", color: "#5B6ABF" }];
     const isPast = ds <= today;
     const totalFree = Object.values(freePeriods).reduce((s, arr) => s + arr.length, 0);
+    const totalBuf = Object.values(bufPeriods).reduce((s, arr) => s + arr.length, 0);
     return (<div>
       {/* Day tabs */}
       <div style={{ display: "flex", gap: 3, marginBottom: 10, overflowX: "auto", paddingBottom: 4 }}>
@@ -536,7 +539,7 @@ function FrontWeekGrid({ appts, selDate, onCellClick, mainSlotCfg, filterTh, cs 
       {/* Slot cards */}
       {isPast
         ? <div style={{ textAlign: "center", padding: "28px 0", color: "#B5A898", fontSize: 14 }}>此日期不開放線上預約</div>
-        : totalFree === 0
+        : (totalFree === 0 && totalBuf === 0)
           ? <div style={{ textAlign: "center", padding: "28px 0", color: "#B5A898", fontSize: 14 }}>
               <div style={{ fontSize: 36, marginBottom: 8 }}>📭</div>
               {filterTh ? "此日所選治療師無可預約時段" : "此日無可預約時段"}
@@ -544,12 +547,17 @@ function FrontWeekGrid({ appts, selDate, onCellClick, mainSlotCfg, filterTh, cs 
           : <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {periodLabels.map(({ k, l, color }) => {
                 const times = freePeriods[k];
-                if (times.length === 0) return null;
+                const bufs = filterTh ? bufPeriods[k] : [];
+                if (times.length === 0 && bufs.length === 0) return null;
                 return (<div key={k} style={{ background: "#FFFDF5", borderRadius: 9, border: "1px solid #E0D5C1", overflow: "hidden" }}>
                   <div style={{ padding: "8px 12px", background: `${color}12`, borderBottom: "1px solid #E0D5C1", fontWeight: 700, fontSize: 13, color }}>{l}</div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: 10 }}>
                     {times.map(t => (<button key={t} onClick={() => onCellClick(date, t)} style={{ padding: "8px 14px", borderRadius: 7, border: "1.5px solid #D4C5A9", background: "#FFFDF5", color: "#3D2B1F", cursor: "pointer", fontSize: 14, fontWeight: 500, fontFamily: "'Noto Sans TC', sans-serif" }}
                       onMouseEnter={e => e.currentTarget.style.background = "#F0E0C8"} onMouseLeave={e => e.currentTarget.style.background = "#FFFDF5"}>{t}</button>))}
+                    {bufs.map(t => (<button key={`buf-${t}`} disabled style={{ padding: "8px 14px", borderRadius: 7, border: "none", background: "#4A4A4A", color: "rgba(255,255,255,0.7)", cursor: "not-allowed", fontSize: 12, fontWeight: 500, fontFamily: "'Noto Sans TC', sans-serif", display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
+                      <span style={{ fontSize: 11, opacity: 0.6, textDecoration: "line-through" }}>{t}</span>
+                      <span style={{ fontSize: 10, color: "#FFD97A", fontWeight: 700 }}>須緩衝</span>
+                    </button>))}
                   </div>
                 </div>);
               })}
@@ -690,13 +698,9 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
             {starts.map(as => renderApptRow(as, false))}
             {/* Continuations: occupying this slot but started earlier */}
             {all.filter(aa => aa.time !== time).map(aa => renderApptRow(aa, true))}
-            {/* Bottom action: add extra or open slot */}
-            {!closed && <div onClick={() => onCellClick(selDate, time)} style={{ padding: "0 10px", height: occ ? 22 : 30, display: "flex", alignItems: "center", fontSize: occ ? 11 : 13, color: occ ? "#B8860B" : "#C4B49A", cursor: "pointer", borderTop: occ ? "1px dashed #EDE5D5" : "none" }}
-              onMouseEnter={e => e.currentTarget.style.color = occ ? "#C2563A" : "#8B7355"}
-              onMouseLeave={e => e.currentTarget.style.color = occ ? "#B8860B" : "#C4B49A"}>
-              {occ ? "+ 外加個案" : "可預約"}
-            </div>}
-            {closed && <div style={{ padding: "0 10px", height: 30, display: "flex", alignItems: "center", fontSize: 13, color: "#B5A898" }}>已關閉</div>}
+            {!occ && closed && <div style={{ padding: "0 10px", height: 30, display: "flex", alignItems: "center", fontSize: 13, color: "#B5A898" }}>已關閉</div>}
+            {!occ && !closed && <div onClick={() => onCellClick(selDate, time)} style={{ padding: "0 10px", height: 30, display: "flex", alignItems: "center", fontSize: 13, color: "#C4B49A", cursor: "pointer" }}
+              onMouseEnter={e => e.currentTarget.style.color = "#8B7355"} onMouseLeave={e => e.currentTarget.style.color = "#C4B49A"}>可預約</div>}
           </td>
           <td style={{ textAlign: "center", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5" }}>
             <button onClick={() => toggleSlot(time)} style={{ padding: "2px 8px", borderRadius: 4, border: "none", cursor: "pointer", background: closed ? "#EDE5D5" : "#3D2B1FDD", color: closed ? "#B5A898" : "white", fontSize: 9, fontWeight: 600, fontFamily: "'Noto Sans TC', sans-serif" }}>{closed ? "關" : "開"}</button>
@@ -1493,7 +1497,7 @@ export default function App() {
             <div><span style={{ color: "#C2563A", fontWeight: 700 }}>5.</span> 若連續顯示「此時段無可預約的治療師」，可能當月班表尚未安排，請耐心等待。謝謝。</div>
           </div>
         </div>
-        <NavCtrl selDate={selDate} setSelDate={setSelDate} viewMode="week" setViewMode={() => {}} showDayView={false} /><div style={{ display: "flex", gap: 10, marginBottom: 10, padding: "7px 12px", background: "#FFFDF5", borderRadius: 7, border: "1px solid #E0D5C1", fontSize: 14 }}><span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ display: "inline-block", width: 16, height: 12, borderRadius: 2, background: "#2A2A2A" }} /><span>未開放或已占用</span></span><span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ display: "inline-block", width: 16, height: 12, borderRadius: 2, background: "#FFFDF5", border: "1px solid #D4C5A9" }} /><span>可預約（點擊）</span></span>{filterTh && <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ display: "inline-block", width: 16, height: 12, borderRadius: 2, background: "#E8E3D8", opacity: 0.65 }} /><span>無班或須緩衝</span></span>}</div><ThFilterBar filterTh={filterTh} setFilterTh={setFilterTh} showNames onLuClick={() => setLuChoiceModal(true)} /><FrontWeekGrid appts={appts} selDate={selDate} onCellClick={(d, t) => setBookingModal({ date: d, time: t })} mainSlotCfg={mainSlotCfg} filterTh={filterTh} cs={cs} /></>)}
+        <NavCtrl selDate={selDate} setSelDate={setSelDate} viewMode="week" setViewMode={() => {}} showDayView={false} /><div style={{ display: "flex", gap: 10, marginBottom: 10, padding: "7px 12px", background: "#FFFDF5", borderRadius: 7, border: "1px solid #E0D5C1", fontSize: 14, flexWrap: "wrap" }}>{window.innerWidth >= 600 && <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ display: "inline-block", width: 16, height: 12, borderRadius: 2, background: "#2A2A2A" }} /><span>未開放或已占用</span></span>}{window.innerWidth >= 600 && <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ display: "inline-block", width: 16, height: 12, borderRadius: 2, background: "#FFFDF5", border: "1px solid #D4C5A9" }} /><span>可預約（點擊）</span></span>}{filterTh && <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ display: "inline-block", width: 16, height: 12, borderRadius: 2, background: "#E8E3D8", opacity: 0.65 }} /><span>無班或須緩衝</span></span>}</div><ThFilterBar filterTh={filterTh} setFilterTh={setFilterTh} showNames onLuClick={() => setLuChoiceModal(true)} /><FrontWeekGrid appts={appts} selDate={selDate} onCellClick={(d, t) => setBookingModal({ date: d, time: t })} mainSlotCfg={mainSlotCfg} filterTh={filterTh} cs={cs} /></>)}
 
       {page === "front" && frontTab === "lu" && (<><NavCtrl selDate={selDate} setSelDate={setSelDate} viewMode="week" setViewMode={() => {}} showDayView={false} /><div style={{ display: "flex", gap: 10, marginBottom: 10, padding: "7px 12px", background: "#F8FDFB", borderRadius: 7, border: `1px solid ${LU_COLOR}30`, fontSize: 14, alignItems: "center" }}><span style={{ fontWeight: 700, color: LU_COLOR }}>盧獨立時段</span><span style={{ color: "#8B7355" }}>14:00 - 20:45</span></div><LuFrontWeekGrid appts={luAppts} selDate={selDate} onCellClick={(d, t) => setLuBookingModal({ date: d, time: t })} luSlotCfg={luSlotCfg} /></>)}
 
