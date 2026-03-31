@@ -220,8 +220,8 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
     }
   }), [date, time, totalDur, appts, ds, cs, isAdmin, onDutyOccupied, addExtra, overOnDutyLimit]);
 
-  // "不指定" is on-duty → also subject to 2-slot limit
-  const unspecAvail = !overOnDutyLimit || isAdmin;
+  // "不指定" is on-duty → blocked if slot already has on-duty appt OR over 2-slot limit
+  const unspecAvail = (!overOnDutyLimit && !onDutyOccupied) || isAdmin;
   const anyAvail = !slotClosed && (availList.some(t => t.available) || (!addExtra && unspecAvail));
   const selInfo = selTh === "X" ? null : availList.find(t => t.id === selTh);
 
@@ -522,6 +522,7 @@ function FrontWeekGrid({ appts, selDate, onCellClick, mainSlotCfg, filterTh, cs 
     });
     const periodLabels = [{ k: "m", l: "🌅 上午", color: "#C2563A" }, { k: "a", l: "☀️ 下午", color: "#2E7D6F" }, { k: "e", l: "🌙 晚上", color: "#5B6ABF" }];
     const isPast = ds <= today;
+    const totalFree = Object.values(freePeriods).reduce((s, arr) => s + arr.length, 0);
     return (<div>
       {/* Day tabs */}
       <div style={{ display: "flex", gap: 3, marginBottom: 10, overflowX: "auto", paddingBottom: 4 }}>
@@ -533,21 +534,27 @@ function FrontWeekGrid({ appts, selDate, onCellClick, mainSlotCfg, filterTh, cs 
         })}
       </div>
       {/* Slot cards */}
-      {isPast ? <div style={{ textAlign: "center", padding: "20px 0", color: "#B5A898", fontSize: 14 }}>此日期不開放線上預約</div> :
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {periodLabels.map(({ k, l, color }) => {
-          const times = freePeriods[k];
-          if (times.length === 0 && k !== "m") return null;
-          return (<div key={k} style={{ background: "#FFFDF5", borderRadius: 9, border: "1px solid #E0D5C1", overflow: "hidden" }}>
-            <div style={{ padding: "8px 12px", background: `${color}12`, borderBottom: "1px solid #E0D5C1", fontWeight: 700, fontSize: 13, color }}>{l}</div>
-            {times.length === 0 ? <div style={{ padding: "10px 12px", color: "#B5A898", fontSize: 13 }}>此時段無可預約時段</div> :
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: 10 }}>
-              {times.map(t => (<button key={t} onClick={() => onCellClick(date, t)} style={{ padding: "8px 14px", borderRadius: 7, border: "1.5px solid #D4C5A9", background: "#FFFDF5", color: "#3D2B1F", cursor: "pointer", fontSize: 14, fontWeight: 500, fontFamily: "'Noto Sans TC', sans-serif" }}
-                onMouseEnter={e => e.currentTarget.style.background = "#F0E0C8"} onMouseLeave={e => e.currentTarget.style.background = "#FFFDF5"}>{t}</button>))}
-            </div>}
-          </div>);
-        })}
-      </div>}
+      {isPast
+        ? <div style={{ textAlign: "center", padding: "28px 0", color: "#B5A898", fontSize: 14 }}>此日期不開放線上預約</div>
+        : totalFree === 0
+          ? <div style={{ textAlign: "center", padding: "28px 0", color: "#B5A898", fontSize: 14 }}>
+              <div style={{ fontSize: 36, marginBottom: 8 }}>📭</div>
+              {filterTh ? "此日所選治療師無可預約時段" : "此日無可預約時段"}
+            </div>
+          : <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {periodLabels.map(({ k, l, color }) => {
+                const times = freePeriods[k];
+                if (times.length === 0) return null;
+                return (<div key={k} style={{ background: "#FFFDF5", borderRadius: 9, border: "1px solid #E0D5C1", overflow: "hidden" }}>
+                  <div style={{ padding: "8px 12px", background: `${color}12`, borderBottom: "1px solid #E0D5C1", fontWeight: 700, fontSize: 13, color }}>{l}</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: 10 }}>
+                    {times.map(t => (<button key={t} onClick={() => onCellClick(date, t)} style={{ padding: "8px 14px", borderRadius: 7, border: "1.5px solid #D4C5A9", background: "#FFFDF5", color: "#3D2B1F", cursor: "pointer", fontSize: 14, fontWeight: 500, fontFamily: "'Noto Sans TC', sans-serif" }}
+                      onMouseEnter={e => e.currentTarget.style.background = "#F0E0C8"} onMouseLeave={e => e.currentTarget.style.background = "#FFFDF5"}>{t}</button>))}
+                  </div>
+                </div>);
+              })}
+            </div>
+      }
     </div>);
   }
 
@@ -662,12 +669,34 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
     <div style={{ borderRadius: 9, border: "1px solid #E0D5C1", overflow: "hidden" }}><table style={{ borderCollapse: "collapse", width: "100%", fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}><thead><tr><th style={{ padding: "9px 8px", background: "#3D2B1F", color: "#F5EDDC", width: 55, textAlign: "center", borderRight: "2px solid #5A4A3A" }}>時間</th><th style={{ padding: "9px 8px", background: "#3D2B1F", color: "#F5EDDC", textAlign: "left" }}>預約內容</th><th style={{ padding: "9px 8px", background: "#3D2B1F", color: "#F5EDDC", width: 50, textAlign: "center" }}>開關</th></tr></thead><tbody>
       {SLOTS.map(time => { const isH = time.endsWith(":00"); const isBr = time === "14:00"; const starts = getStarts(time); const all = getAllAt(time); const occ = all.length > 0;
         const closed = mainSlotCfg[`${ds}-${time}`] === false;
-        return (<tr key={time} style={{ cursor: "pointer", ...(isBr ? { borderTop: "3px solid #C2563A" } : {}) }}><td onClick={() => !occ && !closed && onCellClick(selDate, time)} style={{ padding: "3px 8px", textAlign: "center", background: isH ? "#F0E8D8" : "#F8F2E6", borderRight: "2px solid #D4C5A9", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", fontWeight: isH ? 700 : 400, color: isH ? "#3D2B1F" : "#8B7355", height: 30 }}>{time}</td>
-          <td style={{ padding: 0, minHeight: 30, borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", background: closed ? "#F5F0E5" : occ ? "#FAFAF5" : "#FFFDF5" }} onMouseEnter={e => { if (!occ && !closed) e.currentTarget.style.background = "#F0E0C8"; }} onMouseLeave={e => { if (!occ && !closed) e.currentTarget.style.background = closed ? "#F5F0E5" : "#FFFDF5"; }}>
-            {starts.map(as => { const th = TH_MAP[as.therapist] || TH_MAP["X"]; return (<div key={as.id} onClick={() => onApptClick(as)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", cursor: "pointer", borderLeft: as.checkedIn ? "3px solid #FFD700" : "3px solid transparent" }}><div style={{ width: 22, height: 22, borderRadius: "50%", background: th.color, flexShrink: 0, color: "white", fontWeight: 700, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>{th.id === "X" ? "?" : th.id}</div><span style={{ fontWeight: 700, color: "#3D2B1F", fontSize: 14 }}>{as.patient}</span>{as.note && <span style={{ color: "#8B7355", fontSize: 12, maxWidth: 80, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>({as.note})</span>}{as.reconfirm && <span style={{ fontSize: 12, fontWeight: 700, color: "#2E7D6F" }}>✓再確認</span>}<span style={{ color: "#8B7355", fontSize: 12 }}>{as.birthday}</span><span style={{ color: "#8B7355", fontSize: 12 }}>{as.duration}分</span><span style={{ fontSize: 12, fontWeight: 600, padding: "1px 5px", borderRadius: 3, background: "#F5F0E5", color: "#5A4A3A" }}>{getApptTreatLabel(as)}</span><span style={{ fontSize: 12, fontWeight: 600, padding: "1px 5px", borderRadius: 3, background: as.onDuty ? "#E6F5EE" : "#FFF0EB", color: as.onDuty ? "#2E7D6F" : "#C2563A" }}>{as.onDuty ? "班內" : "班外"}</span><span style={{ fontSize: 12, fontWeight: 600, padding: "1px 5px", borderRadius: 3, background: as.selfRef ? "#EEEEFF" : "#FFF8E6", color: as.selfRef ? "#5B6ABF" : "#B8860B" }}>{as.selfRef ? "自轉" : "非自轉"}</span>{as.checkedIn && <span style={{ fontSize: 12, fontWeight: 700, color: "#FFD700" }}>✓到</span>}</div>); })}
-            {occ && starts.length === 0 && all.map(aa => { const th = TH_MAP[aa.therapist] || TH_MAP["X"]; return <div key={aa.id} onClick={() => onApptClick(aa)} style={{ padding: "2px 10px", display: "flex", alignItems: "center", cursor: "pointer" }}><div style={{ height: 1, width: 20, background: `${th.color}50` }} /><span style={{ fontSize: 9, color: `${th.color}88`, marginLeft: 6 }}>{aa.patient} 治療中</span></div>; })}
-            {!occ && closed && <div style={{ padding: "0 10px", height: 30, display: "flex", alignItems: "center", fontSize: 13, color: "#B5A898" }}>已關閉</div>}
-            {!occ && !closed && <div onClick={() => onCellClick(selDate, time)} style={{ padding: "0 10px", height: 30, display: "flex", alignItems: "center", fontSize: 13, color: "#C4B49A" }}>可預約</div>}
+        // Helper: render one appt row (used for both starts and continuations)
+        const renderApptRow = (aa, isCont) => { const th = TH_MAP[aa.therapist] || TH_MAP["X"]; return (
+          <div key={aa.id} onClick={() => onApptClick(aa)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", cursor: "pointer", borderLeft: aa.checkedIn ? "3px solid #FFD700" : isCont ? `3px solid ${th.color}50` : "3px solid transparent", background: isCont ? `${th.color}07` : "transparent" }}>
+            <div style={{ width: 22, height: 22, borderRadius: "50%", background: isCont ? `${th.color}90` : th.color, flexShrink: 0, color: "white", fontWeight: 700, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>{th.id === "X" ? "?" : th.id}</div>
+            <span style={{ fontWeight: isCont ? 500 : 700, color: isCont ? "#6A5A4A" : "#3D2B1F", fontSize: 14 }}>{aa.patient}</span>
+            {isCont && <span style={{ fontSize: 10, color: "#B5A898", flexShrink: 0 }}>（續）</span>}
+            {!isCont && aa.note && <span style={{ color: "#8B7355", fontSize: 12, maxWidth: 80, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>({aa.note})</span>}
+            {!isCont && aa.reconfirm && <span style={{ fontSize: 12, fontWeight: 700, color: "#2E7D6F" }}>✓再確認</span>}
+            <span style={{ color: "#8B7355", fontSize: 12 }}>{aa.birthday}</span>
+            <span style={{ color: "#8B7355", fontSize: 12 }}>{aa.duration}分</span>
+            <span style={{ fontSize: 12, fontWeight: 600, padding: "1px 5px", borderRadius: 3, background: "#F5F0E5", color: "#5A4A3A" }}>{getApptTreatLabel(aa)}</span>
+            <span style={{ fontSize: 12, fontWeight: 600, padding: "1px 5px", borderRadius: 3, background: aa.onDuty ? "#E6F5EE" : "#FFF0EB", color: aa.onDuty ? "#2E7D6F" : "#C2563A" }}>{aa.onDuty ? "班內" : "班外"}</span>
+            <span style={{ fontSize: 12, fontWeight: 600, padding: "1px 5px", borderRadius: 3, background: aa.selfRef ? "#EEEEFF" : "#FFF8E6", color: aa.selfRef ? "#5B6ABF" : "#B8860B" }}>{aa.selfRef ? "自轉" : "非自轉"}</span>
+            {aa.checkedIn && <span style={{ fontSize: 12, fontWeight: 700, color: "#FFD700" }}>✓到</span>}
+          </div>); };
+        return (<tr key={time} style={{ cursor: "pointer", ...(isBr ? { borderTop: "3px solid #C2563A" } : {}) }}><td onClick={() => onCellClick(selDate, time)} style={{ padding: "3px 8px", textAlign: "center", background: isH ? "#F0E8D8" : "#F8F2E6", borderRight: "2px solid #D4C5A9", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", fontWeight: isH ? 700 : 400, color: isH ? "#3D2B1F" : "#8B7355", height: 30 }}>{time}</td>
+          <td style={{ padding: 0, minHeight: 30, borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", background: closed ? "#F5F0E5" : "#FFFDF5" }}>
+            {/* Starts at this time */}
+            {starts.map(as => renderApptRow(as, false))}
+            {/* Continuations: occupying this slot but started earlier */}
+            {all.filter(aa => aa.time !== time).map(aa => renderApptRow(aa, true))}
+            {/* Bottom action: add extra or open slot */}
+            {!closed && <div onClick={() => onCellClick(selDate, time)} style={{ padding: "0 10px", height: occ ? 22 : 30, display: "flex", alignItems: "center", fontSize: occ ? 11 : 13, color: occ ? "#B8860B" : "#C4B49A", cursor: "pointer", borderTop: occ ? "1px dashed #EDE5D5" : "none" }}
+              onMouseEnter={e => e.currentTarget.style.color = occ ? "#C2563A" : "#8B7355"}
+              onMouseLeave={e => e.currentTarget.style.color = occ ? "#B8860B" : "#C4B49A"}>
+              {occ ? "+ 外加個案" : "可預約"}
+            </div>}
+            {closed && <div style={{ padding: "0 10px", height: 30, display: "flex", alignItems: "center", fontSize: 13, color: "#B5A898" }}>已關閉</div>}
           </td>
           <td style={{ textAlign: "center", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5" }}>
             <button onClick={() => toggleSlot(time)} style={{ padding: "2px 8px", borderRadius: 4, border: "none", cursor: "pointer", background: closed ? "#EDE5D5" : "#3D2B1FDD", color: closed ? "#B5A898" : "white", fontSize: 9, fontWeight: 600, fontFamily: "'Noto Sans TC', sans-serif" }}>{closed ? "關" : "開"}</button>
