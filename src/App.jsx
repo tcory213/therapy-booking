@@ -496,8 +496,13 @@ function FrontWeekGrid({ appts, selDate, onCellClick, mainSlotCfg, filterTh, cs 
     return Math.min(offset, 5);
   });
 
-  const dayData = useMemo(() => wd.map((date, di) => { const ds = dsArr[di]; const isPast = ds <= today; return SLOTS.map(time => {
-    if (isPast) return { time, blocked: true, dimmed: false, isBuffer: false };
+  const dayData = useMemo(() => wd.map((date, di) => { const ds = dsArr[di]; const isPast = ds <= today;
+    // Check if ANY therapist has ANY shift set (on or off) for this day
+    const anyShift = !isPast && THERAPISTS.some(t => getShiftArr(t.id, date, cs).length > 0);
+    // No-shift day (future): mark all slots as blocked + noShift
+    if (!isPast && !anyShift) return SLOTS.map(time => ({ time, blocked: true, dimmed: false, isBuffer: false, noShift: true }));
+    return SLOTS.map(time => {
+    if (isPast) return { time, blocked: true, dimmed: false, isBuffer: false, noShift: false };
     const occ = appts.some(a => a.date === ds && a.onDuty && toM(time) >= toM(a.time) && toM(time) < toM(a.time) + a.duration);
     const closed = mainSlotCfg[`${ds}-${time}`] === false;
     const blocked = occ || closed;
@@ -508,22 +513,23 @@ function FrontWeekGrid({ appts, selDate, onCellClick, mainSlotCfg, filterTh, cs 
       else if (bufferConflict(appts, ds, time, 15, filterTh, null)) { dimmed = true; isBuffer = true; }
       else if (onDutySlotConflict(appts, ds, time, 15, null)) dimmed = true;
     }
-    return { time, blocked, dimmed, isBuffer };
+    return { time, blocked, dimmed, isBuffer, noShift: false };
   }); }), [wd, dsArr, appts, mainSlotCfg, filterTh, cs, today]);
 
   // Mobile card view: show one day at a time
   if (isMobile) {
     const date = wd[mobileDay]; const ds = dsArr[mobileDay]; const slots = dayData[mobileDay];
+    const isPast = ds <= today;
+    const isNoShiftDay = !isPast && slots.every(s => s.noShift);
     const freePeriods = { m: [], a: [], e: [] };
     const bufPeriods = { m: [], a: [], e: [] };
-    slots.forEach(s => {
+    if (!isNoShiftDay) slots.forEach(s => {
       const m = toM(s.time);
       const pk = m < M_MORN_END ? "m" : m < M_EVE_START ? "a" : "e";
       if (!s.blocked && !s.dimmed) freePeriods[pk].push(s.time);
       else if (!s.blocked && s.isBuffer) bufPeriods[pk].push(s.time);
     });
     const periodLabels = [{ k: "m", l: "🌅 上午", color: "#C2563A" }, { k: "a", l: "☀️ 下午", color: "#2E7D6F" }, { k: "e", l: "🌙 晚上", color: "#5B6ABF" }];
-    const isPast = ds <= today;
     const totalFree = Object.values(freePeriods).reduce((s, arr) => s + arr.length, 0);
     const totalBuf = Object.values(bufPeriods).reduce((s, arr) => s + arr.length, 0);
     return (<div>
@@ -539,6 +545,11 @@ function FrontWeekGrid({ appts, selDate, onCellClick, mainSlotCfg, filterTh, cs 
       {/* Slot cards */}
       {isPast
         ? <div style={{ textAlign: "center", padding: "28px 0", color: "#B5A898", fontSize: 14 }}>此日期不開放線上預約</div>
+        : isNoShiftDay
+          ? <div style={{ textAlign: "center", padding: "28px 0", color: "#B5A898", fontSize: 14 }}>
+              <div style={{ fontSize: 36, marginBottom: 8 }}>📅</div>
+              本日未排班
+            </div>
         : (totalFree === 0 && totalBuf === 0)
           ? <div style={{ textAlign: "center", padding: "28px 0", color: "#B5A898", fontSize: 14 }}>
               <div style={{ fontSize: 36, marginBottom: 8 }}>📭</div>
@@ -566,12 +577,12 @@ function FrontWeekGrid({ appts, selDate, onCellClick, mainSlotCfg, filterTh, cs 
     </div>);
   }
 
-  const renderMap = useMemo(() => { const map = {}; for (let di = 0; di < 6; di++) { const col = dayData[di]; let i = 0; while (i < col.length) { if (col[i].blocked) { let j = i; while (j < col.length && col[j].blocked) j++; map[`${i}-${di}`] = { render: true, span: j - i, type: "blocked" }; for (let k = i + 1; k < j; k++) map[`${k}-${di}`] = { render: false }; i = j; } else { map[`${i}-${di}`] = { render: true, span: 1, type: "free", time: col[i].time, dimmed: col[i].dimmed }; i++; } } } return map; }, [dayData]);
+  const renderMap = useMemo(() => { const map = {}; for (let di = 0; di < 6; di++) { const col = dayData[di]; let i = 0; while (i < col.length) { if (col[i].blocked) { let j = i; while (j < col.length && col[j].blocked) j++; const isNoShift = col.slice(i, j).every(s => s.noShift); map[`${i}-${di}`] = { render: true, span: j - i, type: "blocked", noShift: isNoShift }; for (let k = i + 1; k < j; k++) map[`${k}-${di}`] = { render: false }; i = j; } else { map[`${i}-${di}`] = { render: true, span: 1, type: "free", time: col[i].time, dimmed: col[i].dimmed }; i++; } } } return map; }, [dayData]);
   return (<div style={{ overflowX: "auto", borderRadius: 9, border: "1px solid #E0D5C1" }}><table style={{ borderCollapse: "collapse", width: "100%", minWidth: 520, fontSize: 13, fontFamily: "'Noto Sans TC', sans-serif" }}>
     <thead><tr><th style={{ padding: "8px 4px", background: "#3D2B1F", color: "#F5EDDC", position: "sticky", left: 0, zIndex: 10, minWidth: 48, width: 48, borderRight: "2px solid #5A4A3A", fontSize: 13 }}>時間</th>
       {wd.map((date, di) => { const isT = dsArr[di] === today; return (<th key={di} style={{ padding: "6px 3px", background: isT ? "#5A3A2A" : "#3D2B1F", color: "#F5EDDC", borderLeft: "1px solid #5A4A3A", fontSize: 12, minWidth: 58, width: "16%" }}><div>{`${date.getMonth() + 1}/${date.getDate()}`}</div><div style={{ fontSize: 12, color: isT ? "#F0A080" : "#C4B49A", marginTop: 1 }}>{WDAY[di]}{isT && " 今"}</div></th>); })}</tr></thead>
     <tbody>{SLOTS.map((time, si) => { const isH = time.endsWith(":00"); const isBr = time === "14:00"; return (<tr key={time} style={{ ...(isBr ? { borderTop: "3px solid #C2563A" } : {}) }}><td style={{ padding: "2px 3px", textAlign: "center", background: isH ? "#F0E8D8" : "#F8F2E6", position: "sticky", left: 0, zIndex: 5, borderRight: "2px solid #D4C5A9", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", fontWeight: isH ? 700 : 400, color: isH ? "#3D2B1F" : "#8B7355", fontSize: isH ? 13 : 12, height: 28 }}>{time}</td>
-      {wd.map((date, di) => { const cell = renderMap[`${si}-${di}`]; if (!cell || !cell.render) return null; if (cell.type === "blocked") return (<td key={di} rowSpan={cell.span} style={{ background: "#2A2A2A", color: "rgba(255,255,255,0.75)", textAlign: "center", verticalAlign: "middle", fontSize: 12, borderLeft: "1px solid #2A2A2A", borderTop: "none", padding: "4px 2px" }}>{cell.span >= 2 ? <span>未開放<br />或已占用</span> : <span>已占用</span>}</td>);
+      {wd.map((date, di) => { const cell = renderMap[`${si}-${di}`]; if (!cell || !cell.render) return null; if (cell.type === "blocked") return (<td key={di} rowSpan={cell.span} style={{ background: "#2A2A2A", color: "rgba(255,255,255,0.75)", textAlign: "center", verticalAlign: "middle", fontSize: 12, borderLeft: "1px solid #2A2A2A", borderTop: "none", padding: "4px 2px" }}>{cell.noShift ? <span>未排班<br />或已占用</span> : cell.span >= 2 ? <span>未開放<br />或已占用</span> : <span>已占用</span>}</td>);
         const dim = cell.dimmed;
         return (<td key={di} style={{ borderLeft: "1px solid #EDE5D5", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", padding: 0, height: 28, cursor: dim ? "default" : "pointer", background: dim ? "#E8E3D8" : "#FFFDF5", opacity: dim ? 0.65 : 1 }} onClick={() => !dim && onCellClick(date, cell.time)} onMouseEnter={e => { if (!dim) e.currentTarget.style.background = "#F0E0C8"; }} onMouseLeave={e => { if (!dim) e.currentTarget.style.background = "#FFFDF5"; }} />); })}</tr>); })}</tbody>
   </table></div>);
@@ -1491,10 +1502,9 @@ export default function App() {
           <div style={{ fontWeight: 700, color: "#3D2B1F", fontSize: 19, marginBottom: 8, fontFamily: "'Noto Serif TC', serif" }}>📋 預約說明</div>
           <div style={{ paddingLeft: 4 }}>
             <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>1.</span> 初診患者請務必經過門診才可預約治療。若未經過門診，報到時本院可能取消您的預約。</div>
-            <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>2.</span> 點選空白時段或特定治療師進行預約。當日不開放線上預約，請來電洽詢。</div>
-            <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>3.</span> 預約完成後，為保護個資，該空格將轉為黑色。請點選「查詢及取消」，並輸入身分證字號查詢預約是否成功。</div>
-            <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>4.</span> 預約後若無法報到，請至少於一天前線上取消。若反覆未報到且未取消，將收回您預約的權限，以維護所有患者的權益。</div>
-            <div><span style={{ color: "#C2563A", fontWeight: 700 }}>5.</span> 若連續顯示「此時段無可預約的治療師」，可能當月班表尚未安排，請耐心等待。謝謝。</div>
+            <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>2.</span> 可直接選時段，也可點選治療師僅顯示該同仁可預約時段，再點擊清除則回到全部可約時段。當日不開放線上預約，請來電洽詢。</div>
+            <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>3.</span> 預約完成後，請點選「查詢及取消」，並輸入身分證字號查詢預約是否成功。</div>
+            <div><span style={{ color: "#C2563A", fontWeight: 700 }}>4.</span> 預約後若無法報到，請至少於一天前線上取消。若反覆未報到且未取消，將收回您預約的權限，以維護所有患者的權益。</div>
           </div>
         </div>
         <NavCtrl selDate={selDate} setSelDate={setSelDate} viewMode="week" setViewMode={() => {}} showDayView={false} /><div style={{ display: "flex", gap: 10, marginBottom: 10, padding: "7px 12px", background: "#FFFDF5", borderRadius: 7, border: "1px solid #E0D5C1", fontSize: 14, flexWrap: "wrap" }}>{window.innerWidth >= 600 && <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ display: "inline-block", width: 16, height: 12, borderRadius: 2, background: "#2A2A2A" }} /><span>未開放或已占用</span></span>}{window.innerWidth >= 600 && <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ display: "inline-block", width: 16, height: 12, borderRadius: 2, background: "#FFFDF5", border: "1px solid #D4C5A9" }} /><span>可預約（點擊）</span></span>}{filterTh && <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ display: "inline-block", width: 16, height: 12, borderRadius: 2, background: "#E8E3D8", opacity: 0.65 }} /><span>無班或須緩衝</span></span>}</div><ThFilterBar filterTh={filterTh} setFilterTh={setFilterTh} showNames onLuClick={() => setLuChoiceModal(true)} /><FrontWeekGrid appts={appts} selDate={selDate} onCellClick={(d, t) => setBookingModal({ date: d, time: t })} mainSlotCfg={mainSlotCfg} filterTh={filterTh} cs={cs} /></>)}
