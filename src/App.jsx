@@ -622,6 +622,7 @@ function PhoneLookup({ appts, luAppts, onDelete, onLuDelete }) {
   }, [q, appts, luAppts]);
   const handleDelete = () => {
     if (!deleteTarget) return;
+    if (deleteTarget.date === fd(new Date())) return; // 今日不可取消
     if (deleteTarget.sys === "lu") onLuDelete(deleteTarget.id);
     else onDelete(deleteTarget.id);
     setDeleteTarget(null);
@@ -766,7 +767,7 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
 /* ═══════════════════════════════════════════ Admin Lookup ═══════════════════════════════════════════ */
 function AdminLookup({ appts, luAppts, onApptClick, onLuApptClick }) {
   const [query, setQuery] = useState("");
-  const [mode, setMode] = useState("id"); // "id" | "bday"
+  const [mode, setMode] = useState("bday"); // "id" | "bday"
   const q = query.trim().toUpperCase();
   const qRaw = query.trim();
 
@@ -1505,7 +1506,7 @@ export default function App() {
           <div style={{ paddingLeft: 4 }}>
             <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>1.</span> 初診患者請務必經過門診才可預約治療。若未經過門診，報到時本院可能取消您的預約。</div>
             <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>2.</span> 可直接選時段，也可點選治療師僅顯示該同仁可預約時段，再點擊清除則回到全部可約時段。當日不開放線上預約，請來電洽詢。</div>
-            <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>3.</span> 預約完成後，請點選「查詢及取消」，並輸入身分證字號查詢預約是否成功。</div>
+            <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>3.</span> 預約完成後，請點選「查詢及取消」，並輸入身分證字號查詢預約是否成功。只有個人線上預約的部份才能查詢及取消，若之前於櫃台預約則須由櫃台處理。</div>
             <div><span style={{ color: "#C2563A", fontWeight: 700 }}>4.</span> 預約後若無法報到，請至少於一天前線上取消。若反覆未報到且未取消，將收回您預約的權限，以維護所有患者的權益。</div>
           </div>
         </div>
