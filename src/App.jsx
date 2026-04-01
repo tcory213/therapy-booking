@@ -503,6 +503,8 @@ function FrontWeekGrid({ appts, selDate, onCellClick, mainSlotCfg, filterTh, cs 
     if (!isPast && !anyShift) return SLOTS.map(time => ({ time, blocked: true, dimmed: false, isBuffer: false, noShift: true }));
     return SLOTS.map(time => {
     if (isPast) return { time, blocked: true, dimmed: false, isBuffer: false, noShift: false };
+    // Saturday afternoon is not open to public
+    if (date.getDay() === 6 && toM(time) >= M_AFT_START) return { time, blocked: true, dimmed: false, isBuffer: false, noShift: false };
     const occ = appts.some(a => a.date === ds && a.onDuty && toM(time) >= toM(a.time) && toM(time) < toM(a.time) + a.duration);
     const closed = mainSlotCfg[`${ds}-${time}`] === false;
     const blocked = occ || closed;
