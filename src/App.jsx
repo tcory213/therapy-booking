@@ -44,6 +44,15 @@ function sortByDateTime(a, b) { return a.date < b.date ? -1 : a.date > b.date ? 
 function weekDates(base) { const d = new Date(base), day = d.getDay(); const mon = new Date(d); mon.setDate(d.getDate() - day + (day === 0 ? -6 : 1)); return Array.from({ length: 6 }, (_, i) => { const x = new Date(mon); x.setDate(mon.getDate() + i); return x; }); }
 const WDAY = ["週一", "週二", "週三", "週四", "週五", "週六", "週日"];
 
+// Saturday >= 12:00 (effectively 14:00+ since slots jump) is default-closed in admin views
+function isSatAft(date, time) { return date.getDay() === 6 && toM(time) >= M_AFT_START; }
+const FIXED_CLOSED_TIMES = {
+  2: new Set(["09:30","09:45","11:00","11:15","14:30","14:45","15:30","15:45","19:00","19:15","20:30","20:45"]), // 週二
+  3: new Set(["14:30","14:45","15:30","15:45"]),                                                                // 週三
+  4: new Set(["09:30","09:45","11:00","11:15","14:30","14:45","15:30","15:45","19:00","19:15","20:30","20:45"]), // 週四
+  5: new Set(["09:30","09:45","11:00","11:15","19:00","19:15","20:30","20:45"]),                               // 週五
+};
+
 /* ═══════════════════════════════════════════ Shifts ═══════════════════════════════════════════ */
 const EMPTY_SHIFT = [];
 function getShiftArr(tid, date, cs) { const k = `${tid}-${fd(date)}`; return cs[k] !== undefined ? cs[k] : EMPTY_SHIFT; }
@@ -55,6 +64,13 @@ function luValidRange(st, dur) { const s = toM(st); for (let i = 0; i < dur / 15
 // 盧獨立時段僅週一(1)、週二(2)、週四(4)；開放隔天～次月底
 function luWeekDates(base) { const all = weekDates(base); return [all[0], all[1], all[3]]; }
 function isLuDateOpen(ds) { const today = new Date(); const tom = new Date(today); tom.setDate(today.getDate() + 1); const nextMonthEnd = new Date(today.getFullYear(), today.getMonth() + 2, 0); return ds >= fd(tom) && ds <= fd(nextMonthEnd); }
+// Next month and beyond is locked until the 25th of the current month
+function isNextMonthLocked(ds) {
+  const today = new Date();
+  if (today.getDate() >= 25) return false; // 25+ → open
+  const nextMonthStart = `${today.getFullYear()}-${String(today.getMonth() + 2).padStart(2, "0")}-01`;
+  return ds >= nextMonthStart;
+}
 function isLuSlotClosed(ds, time, luSlotCfg) { return luSlotCfg[`${ds}-${time}`] === false; }
 
 /* ═══════════════════════════════════════════ Conflicts ═══════════════════════════════════════════ */
@@ -497,6 +513,8 @@ function FrontWeekGrid({ appts, selDate, onCellClick, mainSlotCfg, filterTh, cs 
   });
 
   const dayData = useMemo(() => wd.map((date, di) => { const ds = dsArr[di]; const isPast = ds <= today;
+    // Next-month lock: blocked until the 25th of the current month
+    if (!isPast && isNextMonthLocked(ds)) return SLOTS.map(time => ({ time, blocked: true, dimmed: false, isBuffer: false, noShift: false }));
     // Check if ANY therapist has ANY shift set (on or off) for this day
     const anyShift = !isPast && THERAPISTS.some(t => getShiftArr(t.id, date, cs).length > 0);
     // No-shift day (future): mark all slots as blocked + noShift
@@ -505,8 +523,10 @@ function FrontWeekGrid({ appts, selDate, onCellClick, mainSlotCfg, filterTh, cs 
     if (isPast) return { time, blocked: true, dimmed: false, isBuffer: false, noShift: false };
     // Saturday afternoon is not open to public
     if (date.getDay() === 6 && toM(time) >= M_AFT_START) return { time, blocked: true, dimmed: false, isBuffer: false, noShift: false };
+    // Fixed closed slots by day-of-week
+    const fixedClosed = FIXED_CLOSED_TIMES[date.getDay()]?.has(time) ?? false;
     const occ = appts.some(a => a.date === ds && a.onDuty && toM(time) >= toM(a.time) && toM(time) < toM(a.time) + a.duration);
-    const closed = mainSlotCfg[`${ds}-${time}`] === false;
+    const closed = fixedClosed || mainSlotCfg[`${ds}-${time}`] === false;
     const blocked = occ || closed;
     let dimmed = false; let isBuffer = false;
     if (filterTh && !blocked) {
@@ -594,7 +614,7 @@ function LuFrontWeekGrid({ appts, selDate, onCellClick, luSlotCfg }) {
   const wd = useMemo(() => luWeekDates(selDate), [selDate]);
   const dsArr = useMemo(() => wd.map(d => fd(d)), [wd]);
   const LU_WDAY = ["週一", "週二", "週四"];
-  const dayData = useMemo(() => wd.map((date, di) => { const ds = dsArr[di]; const open = isLuDateOpen(ds); return LU_SLOTS.map(time => {
+  const dayData = useMemo(() => wd.map((date, di) => { const ds = dsArr[di]; const open = isLuDateOpen(ds) && !isNextMonthLocked(ds); return LU_SLOTS.map(time => {
     if (!open) return { time, blocked: true };
     const m = toM(time); const occ = appts.some(a => a.date === ds && m >= toM(a.time) && m < toM(a.time) + a.duration);
     const closed = isLuSlotClosed(ds, time, luSlotCfg);
@@ -669,7 +689,8 @@ function AdminWeekGrid({ appts, selDate, onCellClick, onApptClick, filterTh, cs 
       {wd.map((date, di) => { const ds = dsArr[di]; const as = getStart(ds, time); const aa = getAt(ds, time); const occ = !!aa; const th = aa ? (TH_MAP[aa.therapist] || TH_MAP["X"]) : null;
         const fState = filterTh && !occ ? getPeriodStateAt(filterTh, date, time, cs) : null;
         const dim = filterTh && !occ && fState !== "on" && fState !== "off";
-        return (<td key={di} onClick={() => occ ? onApptClick(aa) : !dim && onCellClick(date, time)} style={{ borderLeft: "1px solid #EDE5D5", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", padding: 0, height: 26, cursor: dim ? "default" : "pointer", position: "relative", background: dim ? "#E8E3D8" : occ ? `${th.color}18` : "#FFFDF5", opacity: dim ? 0.5 : 1 }} onMouseEnter={e => { if (!occ && !dim) e.currentTarget.style.background = "#F0E0C8"; }} onMouseLeave={e => { if (!occ && !dim) e.currentTarget.style.background = "#FFFDF5"; }}>{as && (()=>{ const asth = TH_MAP[as.therapist] || TH_MAP["X"]; return (<div style={{ position: "absolute", top: 1, left: 1, right: 1, height: (as.duration / 15) * 26 - 2, background: `linear-gradient(135deg, ${asth.color}EE, ${asth.color}AA)`, borderRadius: 3, zIndex: 2, padding: "2px 4px", color: "white", fontSize: 10, fontWeight: 600, overflow: "hidden", display: "flex", flexDirection: "column", border: as.checkedIn ? "2px solid #FFD700" : as.onDuty ? "none" : "1.5px dashed rgba(255,255,255,0.6)" }}><div style={{ display: "flex", justifyContent: "space-between" }}><span>{as.patient.slice(0, 3)}</span><span style={{ opacity: 0.8, fontSize: 9 }}>{asth.id === "X" ? "?" : asth.id}</span></div>{as.duration >= 30 && <span style={{ fontSize: 9, opacity: 0.75 }}>{as.duration}m·{as.onDuty ? "內" : "外"}</span>}</div>);})()}</td>); })}</tr>); })}</tbody>
+        const satAftBlock = isSatAft(date, time);
+        return (<td key={di} onClick={() => occ ? onApptClick(aa) : !dim && !satAftBlock && onCellClick(date, time)} style={{ borderLeft: "1px solid #EDE5D5", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", padding: 0, height: 26, cursor: (dim || satAftBlock) ? "default" : "pointer", position: "relative", background: satAftBlock ? "#2A2A2A" : dim ? "#E8E3D8" : occ ? `${th.color}18` : "#FFFDF5", opacity: dim ? 0.5 : 1 }} onMouseEnter={e => { if (!occ && !dim && !satAftBlock) e.currentTarget.style.background = "#F0E0C8"; }} onMouseLeave={e => { if (!occ && !dim && !satAftBlock) e.currentTarget.style.background = "#FFFDF5"; }}>{as && (()=>{ const asth = TH_MAP[as.therapist] || TH_MAP["X"]; return (<div style={{ position: "absolute", top: 1, left: 1, right: 1, height: (as.duration / 15) * 26 - 2, background: `linear-gradient(135deg, ${asth.color}EE, ${asth.color}AA)`, borderRadius: 3, zIndex: 2, padding: "2px 4px", color: "white", fontSize: 10, fontWeight: 600, overflow: "hidden", display: "flex", flexDirection: "column", border: as.checkedIn ? "2px solid #FFD700" : as.onDuty ? "none" : "1.5px dashed rgba(255,255,255,0.6)" }}><div style={{ display: "flex", justifyContent: "space-between" }}><span>{as.patient.slice(0, 3)}</span><span style={{ opacity: 0.8, fontSize: 9 }}>{asth.id === "X" ? "?" : asth.id}</span></div>{as.duration >= 30 && <span style={{ fontSize: 9, opacity: 0.75 }}>{as.duration}m·{as.onDuty ? "內" : "外"}</span>}</div>);})()}</td>); })}</tr>); })}</tbody>
   </table></div>);
 }
 
@@ -678,7 +699,15 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
   const getStarts = useCallback(time => dayA.filter(a => a.time === time), [dayA]);
   const getAllAt = useCallback(time => { const m = toM(time); return dayA.filter(a => m >= toM(a.time) && m < toM(a.time) + a.duration); }, [dayA]);
   const stats = useMemo(() => ({ t: dayA.length, m: dayA.reduce((s, a) => s + a.duration, 0), on: dayA.filter(a => a.onDuty).length, off: dayA.filter(a => !a.onDuty).length, sr: dayA.filter(a => a.selfRef).length }), [dayA]);
-  const toggleSlot = (time) => { const k = `${ds}-${time}`; setMainSlotCfg(prev => ({ ...prev, [k]: prev[k] === false ? undefined : false })); };
+  const toggleSlot = (time) => {
+    const k = `${ds}-${time}`;
+    if (isSatAft(selDate, time)) {
+      // Saturday aft: default closed; toggle open(true) ↔ default(undefined)
+      setMainSlotCfg(prev => ({ ...prev, [k]: prev[k] === true ? undefined : true }));
+    } else {
+      setMainSlotCfg(prev => ({ ...prev, [k]: prev[k] === false ? undefined : false }));
+    }
+  };
   const [showPrint, setShowPrint] = useState(false);
   const printContent = useMemo(() => {
     const dateLabel = `${selDate.getFullYear()}/${selDate.getMonth() + 1}/${selDate.getDate()} ${WDAY[(selDate.getDay() + 6) % 7]}`;
@@ -692,7 +721,11 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
     </div>
     <div style={{ borderRadius: 9, border: "1px solid #E0D5C1", overflow: "hidden" }}><table style={{ borderCollapse: "collapse", width: "100%", fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}><thead><tr><th style={{ padding: "9px 8px", background: "#3D2B1F", color: "#F5EDDC", width: 55, textAlign: "center", borderRight: "2px solid #5A4A3A" }}>時間</th><th style={{ padding: "9px 8px", background: "#3D2B1F", color: "#F5EDDC", textAlign: "left" }}>預約內容</th><th style={{ padding: "9px 8px", background: "#3D2B1F", color: "#F5EDDC", width: 50, textAlign: "center" }}>開關</th></tr></thead><tbody>
       {SLOTS.map(time => { const isH = time.endsWith(":00"); const isBr = time === "14:00"; const starts = getStarts(time); const all = getAllAt(time); const occ = all.length > 0;
-        const closed = mainSlotCfg[`${ds}-${time}`] === false;
+        const satAft = isSatAft(selDate, time);
+        const k = `${ds}-${time}`;
+        // Normal: closed when mainSlotCfg[k]===false. SatAft: closed unless explicitly opened (true)
+        const closed = satAft ? mainSlotCfg[k] !== true : mainSlotCfg[k] === false;
+        const toggleLabel = satAft ? (mainSlotCfg[k] === true ? "開" : "關") : (mainSlotCfg[k] === false ? "關" : "開");
         // Helper: render one appt row (used for both starts and continuations)
         const renderApptRow = (aa, isCont) => { const th = TH_MAP[aa.therapist] || TH_MAP["X"]; return (
           <div key={aa.id} onClick={() => onApptClick(aa)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", cursor: "pointer", borderLeft: aa.checkedIn ? "3px solid #FFD700" : isCont ? `3px solid ${th.color}50` : "3px solid transparent", background: isCont ? `${th.color}07` : "transparent" }}>
@@ -719,7 +752,7 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
               onMouseEnter={e => e.currentTarget.style.color = "#8B7355"} onMouseLeave={e => e.currentTarget.style.color = "#C4B49A"}>可預約</div>}
           </td>
           <td style={{ textAlign: "center", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5" }}>
-            <button onClick={() => toggleSlot(time)} style={{ padding: "2px 8px", borderRadius: 4, border: "none", cursor: "pointer", background: closed ? "#EDE5D5" : "#3D2B1FDD", color: closed ? "#B5A898" : "white", fontSize: 9, fontWeight: 600, fontFamily: "'Noto Sans TC', sans-serif" }}>{closed ? "關" : "開"}</button>
+            <button onClick={() => toggleSlot(time)} style={{ padding: "2px 8px", borderRadius: 4, border: "none", cursor: "pointer", background: closed ? "#EDE5D5" : "#3D2B1FDD", color: closed ? "#B5A898" : "white", fontSize: 9, fontWeight: 600, fontFamily: "'Noto Sans TC', sans-serif" }}>{toggleLabel}</button>
           </td>
         </tr>); })}</tbody></table></div>
     {showPrint && (
@@ -919,7 +952,9 @@ function LuAdminWeekGrid({ appts, selDate, onCellClick, onApptClick, luSlotCfg }
 function ShiftEditor({ customShifts, setCustomShifts }) {
   const [selTh, setSelTh] = useState("A"); const [month, setMonth] = useState(() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}`; });
   const [y, mo] = month.split("-").map(Number); const dim = new Date(y, mo, 0).getDate(); const fDow = new Date(y, mo - 1, 1).getDay();
-  const dates = useMemo(() => Array.from({ length: dim }, (_, i) => { const d = new Date(y, mo - 1, i + 1); return { date: d, ds: fd(d), dow: d.getDay() }; }), [y, mo, dim]);
+  // Mon-based offset: Mon=0, Tue=1 ... Sat=5; Sun skipped
+  const startOffset = (fDow + 6) % 7; // cells before first Monday of the grid
+  const dates = useMemo(() => Array.from({ length: dim }, (_, i) => { const d = new Date(y, mo - 1, i + 1); return { date: d, ds: fd(d), dow: d.getDay() }; }).filter(({ dow }) => dow !== 0), [y, mo, dim]);
   const getShift = (ds, date) => { const k = `${selTh}-${ds}`; return customShifts[k] !== undefined ? customShifts[k] : EMPTY_SHIFT; };
   const cycle = (ds, pk) => { const k = `${selTh}-${ds}`, cur = [...getShift(ds, new Date(ds))]; const hasOn = cur.includes(pk), hasOff = cur.includes(pk + "o"); let next; if (!hasOn && !hasOff) next = [...cur, pk]; else if (hasOn) { next = cur.filter(c => c !== pk); next.push(pk + "o"); } else next = cur.filter(c => c !== pk + "o"); setCustomShifts(prev => ({ ...prev, [k]: next })); };
   const th = TH_MAP[selTh];
@@ -932,10 +967,14 @@ function ShiftEditor({ customShifts, setCustomShifts }) {
     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, padding: "8px 14px", background: `${th.color}12`, borderRadius: 8, border: `1.5px solid ${th.color}30` }}><div style={{ width: 28, height: 28, borderRadius: "50%", background: th.color, color: "white", fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>{th.id}</div><span style={{ fontWeight: 700, color: "#3D2B1F", fontSize: 17 }}>{th.name}</span><span style={{ fontSize: 13, color: "#8B7355", marginLeft: "auto" }}>無班 → 班內 → 班外 → 無班</span></div>
     <div style={{ display: "flex", gap: 14, marginBottom: 10, fontSize: 14, color: "#5A4A3A" }}><span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ display: "inline-block", width: 16, height: 16, borderRadius: 3, background: `${th.color}DD` }} /> 班內</span><span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ display: "inline-block", width: 16, height: 16, borderRadius: 3, background: `${th.color}40` }} /> 班外</span><span style={{ display: "flex", alignItems: "center", gap: 4 }}><span style={{ display: "inline-block", width: 16, height: 16, borderRadius: 3, background: "#EDE5D5" }} /> 無班</span></div>
     <div style={{ background: "#FFFDF5", borderRadius: 10, border: "1px solid #E0D5C1", overflow: "hidden" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", background: "#3D2B1F" }}>{["日", "一", "二", "三", "四", "五", "六"].map(d => (<div key={d} style={{ padding: "8px 0", textAlign: "center", color: "#F5EDDC", fontSize: 15, fontWeight: 600 }}>{d}</div>))}</div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)" }}>
-        {Array.from({ length: fDow }, (_, i) => (<div key={`e${i}`} style={{ padding: 8, background: "#F8F2E6", borderTop: "1px solid #EDE5D5", borderRight: "1px solid #EDE5D5" }} />))}
-        {dates.map(({ date, ds, dow }) => { const shift = getShift(ds, date); const isT = ds === fd(new Date()); return (<div key={ds} style={{ padding: "5px 3px", borderTop: "1px solid #EDE5D5", borderRight: "1px solid #EDE5D5", background: isT ? "#FFF8E6" : "#FFFDF5", minHeight: 72 }}><div style={{ fontSize: 14, fontWeight: isT ? 700 : 400, color: dow === 0 || dow === 6 ? "#C2563A" : "#3D2B1F", marginBottom: 3, textAlign: "center" }}>{date.getDate()}</div><div style={{ display: "flex", flexDirection: "column", gap: 2 }}>{[{ k: "m", l: "上午" }, { k: "a", l: "下午" }, { k: "e", l: "晚上" }].map(({ k, l }) => { const st = getPeriodState(shift, k); let bg, color; if (st === "on") { bg = `${th.color}DD`; color = "white"; } else if (st === "off") { bg = `${th.color}40`; color = "#3D2B1F"; } else { bg = "#EDE5D5"; color = "#B5A898"; } return (<button key={k} onClick={() => cycle(ds, k)} style={{ padding: "2px 0", borderRadius: 3, border: "none", cursor: "pointer", background: bg, color, fontSize: 12, fontWeight: 600, fontFamily: "'Noto Sans TC', sans-serif" }}>{l}</button>); })}</div></div>); })}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", background: "#3D2B1F" }}>{["一", "二", "三", "四", "五", "六"].map(d => (<div key={d} style={{ padding: "8px 0", textAlign: "center", color: "#F5EDDC", fontSize: 15, fontWeight: 600 }}>{d}</div>))}</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)" }}>
+        {Array.from({ length: startOffset }, (_, i) => (<div key={`e${i}`} style={{ padding: 8, background: "#F8F2E6", borderTop: "1px solid #EDE5D5", borderRight: "1px solid #EDE5D5" }} />))}
+        {dates.map(({ date, ds, dow }) => { const shift = getShift(ds, date); const isT = ds === fd(new Date()); return (<div key={ds} style={{ padding: "5px 3px", borderTop: "1px solid #EDE5D5", borderRight: "1px solid #EDE5D5", background: isT ? "#FFF8E6" : "#FFFDF5", minHeight: 72 }}><div style={{ fontSize: 14, fontWeight: isT ? 700 : 400, color: dow === 6 ? "#C2563A" : "#3D2B1F", marginBottom: 3, textAlign: "center" }}>{date.getDate()}</div><div style={{ display: "flex", flexDirection: "column", gap: 2 }}>{[{ k: "m", l: "上午" }, { k: "a", l: "下午" }, { k: "e", l: "晚上" }].map(({ k, l }) => {
+          const satLocked = dow === 6 && (k === "a" || k === "e");
+          const st = getPeriodState(shift, k); let bg, color; if (satLocked) { bg = "#2A2A2A"; color = "rgba(255,255,255,0.3)"; } else if (st === "on") { bg = `${th.color}DD`; color = "white"; } else if (st === "off") { bg = `${th.color}40`; color = "#3D2B1F"; } else { bg = "#EDE5D5"; color = "#B5A898"; }
+          return (<button key={k} onClick={() => !satLocked && cycle(ds, k)} disabled={satLocked} style={{ padding: "2px 0", borderRadius: 3, border: "none", cursor: satLocked ? "not-allowed" : "pointer", background: bg, color, fontSize: 12, fontWeight: 600, fontFamily: "'Noto Sans TC', sans-serif", opacity: satLocked ? 0.6 : 1 }}>{satLocked ? "—" : l}</button>);
+        })}</div></div>); })}
       </div>
     </div>
   </div>);
@@ -1506,10 +1545,11 @@ export default function App() {
         <div style={{ background: "#FFFDF5", border: "1.5px solid #E0D5C1", borderRadius: 10, padding: "14px 16px", marginBottom: 12, fontSize: 17, color: "#5A4A3A", lineHeight: 1.8 }}>
           <div style={{ fontWeight: 700, color: "#3D2B1F", fontSize: 19, marginBottom: 8, fontFamily: "'Noto Serif TC', serif" }}>📋 預約說明</div>
           <div style={{ paddingLeft: 4 }}>
-            <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>1.</span> 初診患者請務必經過門診才可預約治療。若未經過門診，報到時本院可能取消您的預約。</div>
-            <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>2.</span> 可直接選時段，也可點選治療師僅顯示該同仁可預約時段，再點擊清除則回到全部可約時段。當日不開放線上預約，請來電洽詢。</div>
-            <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>3.</span> 預約完成後，請點選「查詢及取消」，並輸入身分證字號查詢預約是否成功。只有個人線上預約的部份才能查詢及取消，若之前於櫃台預約則須由櫃台處理。</div>
-            <div><span style={{ color: "#C2563A", fontWeight: 700 }}>4.</span> 預約後若無法報到，請至少於一天前線上取消。若反覆未報到且未取消，將收回您預約的權限，以維護所有患者的權益。</div>
+            <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>1.</span> 初診的朋友請先完成門診評估後，再進行治療預約喔！若尚未看診就預約，報到時可能會取消該預約，敬請見諒。</div>
+            <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>2.</span> 預約時可以直接選擇時段，也可以點選治療師查看可預約時間；點選「清除」即可回到全部時段。完成預約後，記得至「查詢及取消」頁面，輸入身分證字號確認是否預約成功。</div>
+            <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>3.</span> 當日暫不開放線上預約與取消，請來電洽詢。另，僅限「線上預約」之紀錄可於系統查詢與取消；若是由櫃台預約，則需再請櫃台處理。次月預約功能將於每月25日自動開放，歡迎多加利用。</div>
+            <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>4.</span> 請於預約時間前準時報到。因後續可能有其他患者安排，如遲到將依現場狀況調整，可能縮短治療時間或改期，恕不提供折時或折價。</div>
+            <div><span style={{ color: "#C2563A", fontWeight: 700 }}>5.</span> 如果臨時無法前來，請記得於一天前完成線上取消。若多次未到且未取消，為了維護其他患者的權益，系統可能會暫停您的預約功能，謝謝您的配合與體諒。</div>
           </div>
         </div>
         <NavCtrl selDate={selDate} setSelDate={setSelDate} viewMode="week" setViewMode={() => {}} showDayView={false} /><div style={{ display: "flex", gap: 10, marginBottom: 10, padding: "7px 12px", background: "#FFFDF5", borderRadius: 7, border: "1px solid #E0D5C1", fontSize: 14, flexWrap: "wrap" }}>{window.innerWidth >= 600 && <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ display: "inline-block", width: 16, height: 12, borderRadius: 2, background: "#2A2A2A" }} /><span>未開放或已占用</span></span>}{window.innerWidth >= 600 && <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ display: "inline-block", width: 16, height: 12, borderRadius: 2, background: "#FFFDF5", border: "1px solid #D4C5A9" }} /><span>可預約（點擊）</span></span>}{filterTh && <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ display: "inline-block", width: 16, height: 12, borderRadius: 2, background: "#E8E3D8", opacity: 0.65 }} /><span>無班或須緩衝</span></span>}</div><ThFilterBar filterTh={filterTh} setFilterTh={setFilterTh} showNames onLuClick={() => setLuChoiceModal(true)} /><FrontWeekGrid appts={appts} selDate={selDate} onCellClick={(d, t) => setBookingModal({ date: d, time: t })} mainSlotCfg={mainSlotCfg} filterTh={filterTh} cs={cs} /></>)}
