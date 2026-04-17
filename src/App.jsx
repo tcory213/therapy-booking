@@ -1356,18 +1356,35 @@ function SalarySummary({ appts, luAppts, cs }) {
 }
 
 function ThFilterBar({ filterTh, setFilterTh, showNames, onLuClick }) {
+  const isNone = filterTh === null;
+  const noneStyle = {
+    display: "flex", alignItems: "center", gap: 3,
+    padding: showNames ? "4px 10px" : "0",
+    width: showNames ? "auto" : 26, height: showNames ? 30 : 26,
+    borderRadius: showNames ? 15 : "50%", cursor: "pointer",
+    background: isNone ? "#3D2B1F" : "#3D2B1F20",
+    color: isNone ? "white" : "#3D2B1F",
+    border: isNone ? "2px solid #3D2B1F" : "2px solid transparent",
+    outline: isNone ? "2px solid #3D2B1F" : "none",
+    outlineOffset: isNone ? "2px" : "0",
+    fontWeight: 700, fontSize: showNames ? 12 : 10,
+    fontFamily: "'Noto Sans TC', sans-serif", transition: "all 0.15s",
+  };
   return (<div style={{ display: "flex", gap: 4, alignItems: "center", padding: "5px 12px", background: "#FFFDF5", borderRadius: 7, border: "1px solid #E0D5C1", marginBottom: 8, fontSize: showNames ? 12 : 10, flexWrap: "wrap" }}>
     <span style={{ color: "#8B7355", marginRight: 4 }}>篩選：</span>
+    {/* 不指定 tag */}
+    <button onClick={() => setFilterTh(null)} style={noneStyle}>
+      <span style={{ width: showNames ? "auto" : "100%", textAlign: "center" }}>{showNames ? "不指定" : "全"}</span>
+    </button>
     {THERAPISTS.map(t => { const sel = filterTh === t.id; return (
       <button key={t.id} onClick={() => {
         if (onLuClick && t.id === "B" && !sel) { onLuClick(); return; }
         setFilterTh(sel ? null : t.id);
-      }} style={{ display: "flex", alignItems: "center", gap: 3, padding: showNames ? "4px 10px" : "0", width: showNames ? "auto" : 26, height: showNames ? 30 : 26, borderRadius: showNames ? 15 : "50%", cursor: "pointer", background: sel ? t.color : `${t.color}20`, color: sel ? "white" : t.color, border: sel ? `2px solid ${t.color}` : "2px solid transparent", fontWeight: 700, fontSize: showNames ? 12 : 10, fontFamily: "'Noto Sans TC', sans-serif", transition: "all 0.15s" }}>
+      }} style={{ display: "flex", alignItems: "center", gap: 3, padding: showNames ? "4px 10px" : "0", width: showNames ? "auto" : 26, height: showNames ? 30 : 26, borderRadius: showNames ? 15 : "50%", cursor: "pointer", background: sel ? t.color : `${t.color}20`, color: sel ? "white" : t.color, border: sel ? `2px solid ${t.color}` : "2px solid transparent", outline: sel ? `2px solid ${t.color}` : "none", outlineOffset: sel ? "2px" : "0", fontWeight: 700, fontSize: showNames ? 12 : 10, fontFamily: "'Noto Sans TC', sans-serif", transition: "all 0.15s" }}>
         <span style={{ width: showNames ? "auto" : "100%", textAlign: "center" }}>{t.id}</span>
         {showNames && <span style={{ fontWeight: 500, fontSize: showNames ? 11 : 9 }}>{t.name}</span>}
       </button>
     ); })}
-    {filterTh && <button onClick={() => setFilterTh(null)} style={{ padding: "4px 10px", borderRadius: 5, border: "1px solid #D4C5A9", background: "#FFFDF5", color: "#8B7355", cursor: "pointer", fontSize: showNames ? 11 : 9, fontFamily: "'Noto Sans TC', sans-serif", marginLeft: 4 }}>清除</button>}
   </div>);
 }
 
@@ -1546,7 +1563,7 @@ export default function App() {
           <div style={{ fontWeight: 700, color: "#3D2B1F", fontSize: 19, marginBottom: 8, fontFamily: "'Noto Serif TC', serif" }}>📋 預約說明</div>
           <div style={{ paddingLeft: 4 }}>
             <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>1.</span> 初診的朋友請先完成門診評估後，再進行治療預約喔！若尚未看診就預約，報到時可能會取消該預約，敬請見諒。</div>
-            <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>2.</span> 預約時可以直接選擇時段，也可以點選治療師查看可預約時間；點選「清除」即可回到全部時段。完成預約後，記得至「查詢及取消」頁面，輸入身分證字號確認是否預約成功。</div>
+            <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>2.</span> 預約時可以直接選擇時段，也可以點選治療師查看可預約時間；點選「不指定」即可回到全部時段。完成預約後，記得至「查詢及取消」頁面，輸入身分證字號確認是否預約成功。</div>
             <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>3.</span> 當日暫不開放線上預約與取消，請來電洽詢。另，僅限「線上預約」之紀錄可於系統查詢與取消；若是由櫃台預約，則需再請櫃台處理。次月預約功能將於每月25日自動開放，歡迎多加利用。</div>
             <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>4.</span> 請於預約時間前準時報到。因後續可能有其他患者安排，如遲到將依現場狀況調整，可能縮短治療時間或改期，恕不提供折時或折價。</div>
             <div><span style={{ color: "#C2563A", fontWeight: 700 }}>5.</span> 如果臨時無法前來，請記得於一天前完成線上取消。若多次未到且未取消，為了維護其他患者的權益，系統可能會暫停您的預約功能，謝謝您的配合與體諒。</div>
