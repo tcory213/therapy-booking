@@ -71,7 +71,21 @@ function isNextMonthLocked(ds) {
   const nextMonthStart = `${today.getFullYear()}-${String(today.getMonth() + 2).padStart(2, "0")}-01`;
   return ds >= nextMonthStart;
 }
-function isLuSlotClosed(ds, time, luSlotCfg) { return luSlotCfg[`${ds}-${time}`] === false; }
+// Lu slots that are closed by default (can be overridden by luSlotCfg[key]=true to open)
+// dow: 1=Mon,2=Tue,4=Thu
+function isLuDefaultClosed(ds, time) {
+  const dow = new Date(ds).getDay();
+  const m = toM(time);
+  if ((dow === 1 || dow === 2) && m >= toM("20:30")) return true; // Mon/Tue 20:30+
+  if (dow === 4 && m >= toM("18:00")) return true; // Thu 18:00+
+  return false;
+}
+function isLuSlotClosed(ds, time, luSlotCfg) {
+  const k = `${ds}-${time}`;
+  if (luSlotCfg[k] === true) return false; // explicitly opened
+  if (luSlotCfg[k] === false) return true;  // explicitly closed
+  return isLuDefaultClosed(ds, time);       // default rule
+}
 
 /* ═══════════════════════════════════════════ Conflicts ═══════════════════════════════════════════ */
 function slotConflict(appts, ds, time, dur, exId, filterFn) {
@@ -155,15 +169,53 @@ function ConfirmModal({ open, message, onOk, onCancel }) {
 }
 function NavCtrl({ selDate, setSelDate, viewMode, setViewMode, showDayView, extra }) {
   const nav = dir => setSelDate(d => { const n = new Date(d); n.setDate(n.getDate() + dir * (viewMode === "week" ? 7 : 1)); return n; });
+  const [showCal, setShowCal] = useState(false);
+  const [calYM, setCalYM] = useState(() => ({ y: selDate.getFullYear(), m: selDate.getMonth() }));
+
+  const todayStr = fd(new Date());
+  const calDim = new Date(calYM.y, calYM.m + 1, 0).getDate();
+  const calFDow = new Date(calYM.y, calYM.m, 1).getDay(); // 0=Sun
+  const calOffset = (calFDow + 6) % 7; // Mon-based
+
   return (<div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
-    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 5, position: "relative" }}>
       <button onClick={() => nav(-1)} style={navBtn}>◀</button>
-      <div style={{ padding: "5px 12px", background: "#FFFDF5", borderRadius: 6, border: "1px solid #D4C5A9", fontWeight: 700, color: "#3D2B1F", fontSize: 12, minWidth: 140, textAlign: "center" }}>
+      <div onClick={() => { setCalYM({ y: selDate.getFullYear(), m: selDate.getMonth() }); setShowCal(v => !v); }}
+        style={{ padding: "5px 12px", background: "#FFFDF5", borderRadius: 6, border: "1px solid #D4C5A9", fontWeight: 700, color: "#3D2B1F", fontSize: 12, minWidth: 140, textAlign: "center", cursor: "pointer", userSelect: "none" }}>
         {viewMode === "week" ? (() => { const w = weekDates(selDate); return `${w[0].getMonth() + 1}/${w[0].getDate()} — ${w[5].getMonth() + 1}/${w[5].getDate()}`; })()
           : `${selDate.getFullYear()}/${selDate.getMonth() + 1}/${selDate.getDate()} ${WDAY[(selDate.getDay() + 6) % 7]}`}
+        <span style={{ marginLeft: 5, fontSize: 10, color: "#8B7355" }}>▾</span>
       </div>
       <button onClick={() => nav(1)} style={navBtn}>▶</button>
       <button onClick={() => setSelDate(new Date())} style={{ ...navBtn, color: "#C2563A", fontWeight: 600, fontSize: 11 }}>今天</button>
+      {showCal && (<>
+        <div onClick={() => setShowCal(false)} style={{ position: "fixed", inset: 0, zIndex: 900 }} />
+        <div style={{ position: "absolute", top: "100%", left: 0, zIndex: 1000, marginTop: 4, background: "#FFFDF5", border: "1.5px solid #D4C5A9", borderRadius: 10, boxShadow: "0 8px 32px rgba(0,0,0,0.14)", padding: 12, minWidth: 230 }}>
+          {/* Month nav */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+            <button onClick={() => setCalYM(p => { const m = p.m === 0 ? 11 : p.m - 1; const y = p.m === 0 ? p.y - 1 : p.y; return { y, m }; })} style={{ ...navBtn, padding: "2px 8px", fontSize: 13 }}>◀</button>
+            <span style={{ fontWeight: 700, fontSize: 13, color: "#3D2B1F" }}>{calYM.y} 年 {calYM.m + 1} 月</span>
+            <button onClick={() => setCalYM(p => { const m = p.m === 11 ? 0 : p.m + 1; const y = p.m === 11 ? p.y + 1 : p.y; return { y, m }; })} style={{ ...navBtn, padding: "2px 8px", fontSize: 13 }}>▶</button>
+          </div>
+          {/* Day headers */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, marginBottom: 4 }}>
+            {["一","二","三","四","五","六","日"].map(d => <div key={d} style={{ textAlign: "center", fontSize: 10, color: "#8B7355", fontWeight: 600 }}>{d}</div>)}
+          </div>
+          {/* Days */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2 }}>
+            {Array.from({ length: calOffset }, (_, i) => <div key={`e${i}`} />)}
+            {Array.from({ length: calDim }, (_, i) => {
+              const day = i + 1;
+              const ds2 = `${calYM.y}-${String(calYM.m + 1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+              const isToday = ds2 === todayStr;
+              const isSel = ds2 === fd(selDate);
+              const dow = (calOffset + i) % 7; // 0=Mon…6=Sun
+              return (<button key={day} onClick={() => { const d = new Date(calYM.y, calYM.m, day); setSelDate(d); setShowCal(false); }}
+                style={{ padding: "4px 0", textAlign: "center", borderRadius: 5, border: isSel ? "2px solid #C2563A" : "none", background: isSel ? "#FFF0EB" : isToday ? "#F5EDDC" : "transparent", color: isSel ? "#C2563A" : dow >= 5 ? "#C2563A" : "#3D2B1F", fontWeight: isSel || isToday ? 700 : 400, fontSize: 12, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>{day}</button>);
+            })}
+          </div>
+        </div>
+      </>)}
     </div>
     <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
       {showDayView && [{ k: "day", l: "日" }, { k: "week", l: "週" }].map(v => (
@@ -180,6 +232,7 @@ const actionBtn = { flex: 1, padding: 9, borderRadius: 7, cursor: "pointer", fon
 /* ═══════════════════════════════════════════ Main Booking Form ═══════════════════════════════════════════ */
 function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlotCfg, addExtra }) {
   const [patient, setPatient] = useState(""); const [bday, setBday] = useState(""); const [idNum, setIdNum] = useState("");
+  const [chartNum, setChartNum] = useState("");
   const [selTreats, setSelTreats] = useState([]);
   const [manualDur, setManualDur] = useState(15);
   const [swDoses, setSwDoses] = useState(1);
@@ -246,7 +299,8 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
 
   const submit = () => {
     if (!patient.trim()) { setErr("請輸入患者姓名"); return; }
-    if (!bday.trim() || bday.length !== 6) { setErr("請輸入民國年月日六碼"); return; }
+    if (isAdmin && !chartNum.trim()) { setErr("請輸入病歷號"); return; }
+    if (!isAdmin && (!bday.trim() || bday.length !== 6)) { setErr("請輸入民國年月日六碼"); return; }
     if (!isAdmin && !idNum.trim()) { setErr("請輸入身分證字號"); return; }
     if (selTreats.length === 0) { setErr("請選擇至少一項治療項目"); return; }
     if (!selTh) { setErr("請選擇治療師"); return; }
@@ -254,7 +308,7 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
     const isUnspecified = selTh === "X";
     const onDuty = isUnspecified ? true : !selInfo?.isOff;
     if (onDuty && overOnDutyLimit && !isAdmin) { setErr("班內治療最多占用 2 格（30 分鐘）"); return; }
-    const apptData = { id: Date.now(), date: ds, time, duration: totalDur, therapist: selTh, patient: patient.trim(), birthday: bday.trim(), idNum: idNum.trim(), onDuty, selfRef,
+    const apptData = { id: Date.now(), date: ds, time, duration: totalDur, therapist: selTh, patient: patient.trim(), birthday: bday.trim(), idNum: idNum.trim(), chartNum: chartNum.trim(), onDuty, selfRef,
       treats: selTreats, manualDur: selTreats.includes("manual") ? manualDur : 0, swDoses: selTreats.includes("shockwave") ? swDoses : 0, laserDoses: selTreats.includes("laser") ? laserDoses : 0 };
 
     if (isAdmin && !isUnspecified && selInfo?.adminOverride) {
@@ -294,8 +348,10 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
   return (<div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
     <div style={{ background: "#F5EDDC", borderRadius: 7, padding: "8px 12px", display: "flex", gap: 14, fontSize: 12, color: "#5A4A3A" }}><span>📅 {ds}</span><span>🕐 {time}</span></div>
     <div><label style={lbl}>患者姓名 *</label><input value={patient} onChange={e => setPatient(e.target.value)} style={inp} placeholder="請輸入全名" /></div>
-    <div><label style={lbl}>生日（民國年月日六碼）*</label><input value={bday} onChange={e => setBday(e.target.value.replace(/\D/g, "").slice(0, 6))} style={inp} placeholder="如 800515" maxLength={6} /></div>
-    <div><label style={lbl}>身分證字號 {isAdmin ? "" : "*"}</label><input value={idNum} onChange={e => setIdNum(e.target.value.toUpperCase())} style={inp} placeholder={isAdmin ? "（後台選填）" : "請輸入身分證字號"} maxLength={10} /></div>
+    {isAdmin && <div><label style={lbl}>病歷號 *</label><input value={chartNum} onChange={e => setChartNum(e.target.value)} style={inp} placeholder="請輸入病歷號" /></div>}
+    {!isAdmin && <div><label style={lbl}>生日（民國年月日六碼）*</label><input value={bday} onChange={e => setBday(e.target.value.replace(/\D/g, "").slice(0, 6))} style={inp} placeholder="如 800515" maxLength={6} /></div>}
+    {isAdmin && <div><label style={lbl}>生日（民國年月日六碼，選填）</label><input value={bday} onChange={e => setBday(e.target.value.replace(/\D/g, "").slice(0, 6))} style={inp} placeholder="如 800515" maxLength={6} /></div>}
+    <div><label style={lbl}>身分證字號 {isAdmin ? "（選填）" : "*"}</label><input value={idNum} onChange={e => setIdNum(e.target.value.toUpperCase())} style={inp} placeholder={isAdmin ? "（後台選填）" : "請輸入身分證字號"} maxLength={10} /></div>
 
     <div><label style={lbl}>治療項目（可複選）</label>
       <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
@@ -450,7 +506,7 @@ function AdminDetail({ appt, appts, onClose, onDelete, onUpdate, onAlert, onCopy
               <input type="checkbox" checked={reconfirm} onChange={e => { setReconfirm(e.target.checked); onUpdate(appt.id, { reconfirm: e.target.checked }); }} style={{ accentColor: "#2E7D6F" }} />再確認
             </label>
           </div>
-          <div style={{ fontSize: 12, color: "#8B7355" }}>生日：{appt.birthday}</div>
+          <div style={{ fontSize: 12, color: "#8B7355" }}>{appt.chartNum ? `病歷號：${appt.chartNum}` : `生日：${appt.birthday}`}</div>
         </div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontSize: 13 }}><div><span style={{ color: "#8B7355" }}>日期：</span>{appt.date}</div><div><span style={{ color: "#8B7355" }}>時間：</span>{appt.time}</div></div>
@@ -897,7 +953,15 @@ function LuAdminDayView({ appts, selDate, onCellClick, onApptClick, luSlotCfg, s
   const ds = fd(selDate); const dayA = useMemo(() => appts.filter(a => a.date === ds), [appts, ds]);
   const getStart = useCallback(time => dayA.find(a => a.time === time), [dayA]);
   const getAt = useCallback(time => { const m = toM(time); return dayA.find(a => m >= toM(a.time) && m < toM(a.time) + a.duration); }, [dayA]);
-  const toggleSlot = (time) => { const k = `${ds}-${time}`; setLuSlotCfg(prev => ({ ...prev, [k]: prev[k] === false ? undefined : false })); };
+  const toggleSlot = (time) => {
+    const k = `${ds}-${time}`;
+    if (isLuDefaultClosed(ds, time)) {
+      // Default-closed: toggle open(true) ↔ default(undefined)
+      setLuSlotCfg(prev => ({ ...prev, [k]: prev[k] === true ? undefined : true }));
+    } else {
+      setLuSlotCfg(prev => ({ ...prev, [k]: prev[k] === false ? undefined : false }));
+    }
+  };
   const stats = useMemo(() => ({ t: dayA.length, m: dayA.reduce((s, a) => s + a.duration, 0) }), [dayA]);
 
   return (<div>
