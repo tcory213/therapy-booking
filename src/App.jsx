@@ -4,14 +4,15 @@ import { collection, doc, onSnapshot, addDoc, deleteDoc, updateDoc, setDoc, writ
 
 /* ═══════════════════════════════════════════ Constants ═══════════════════════════════════════════ */
 const THERAPISTS = [
-  { id: "A", name: "王治療師", color: "#C2563A" },
-  { id: "B", name: "盧治療師", color: "#2E7D6F" },
-  { id: "C", name: "蔡治療師", color: "#5B6ABF" },
-  { id: "D", name: "吳治療師", color: "#B8860B" },
-  { id: "E", name: "東治療師", color: "#8B5C9E" },
+  { id: "A", name: "王治療師", label: "王", color: "#C2563A" },
+  { id: "B", name: "盧治療師", label: "盧", color: "#2E7D6F" },
+  { id: "C", name: "蔡治療師", label: "蔡", color: "#5B6ABF" },
+  { id: "D", name: "吳治療師", label: "吳", color: "#B8860B" },
+  { id: "E", name: "東治療師", label: "東", color: "#8B5C9E" },
 ];
 const TH_MAP = Object.fromEntries(THERAPISTS.map(t => [t.id, t]));
-TH_MAP["X"] = { id: "X", name: "不指定", color: "#8B7355" };
+TH_MAP["X"] = { id: "X", name: "不指定", label: "?", color: "#8B7355" };
+function thLabel(t) { return t?.label || t?.id || "?"; }
 const DURATIONS = [15, 30, 45, 60];
 const TREAT_TYPES = [
   { id: "manual", label: "徒手治療" },
@@ -194,6 +195,9 @@ function NavCtrl({ selDate, setSelDate, viewMode, setViewMode, showDayView, extr
       </div>
       <button onClick={() => nav(1)} style={navBtn}>▶</button>
       <button onClick={() => setSelDate(new Date())} style={{ ...navBtn, color: "#C2563A", fontWeight: 600, fontSize: 11 }}>今天</button>
+      {showDayView && [{ k: "day", l: "日" }, { k: "week", l: "週" }].map(v => (
+        <button key={v.k} onClick={() => setViewMode(v.k)} style={{ padding: "5px 12px", borderRadius: 6, border: `1.5px solid ${viewMode === v.k ? "#C2563A" : "#D4C5A9"}`, background: viewMode === v.k ? "#FFF0EB" : "#FFFDF5", color: viewMode === v.k ? "#C2563A" : "#5A4A3A", cursor: "pointer", fontWeight: 600, fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif" }}>{v.l}</button>
+      ))}{extra}
       {showCal && (<>
         <div onClick={() => setShowCal(false)} style={{ position: "fixed", inset: 0, zIndex: 900 }} />
         <div style={{ position: "absolute", top: "100%", left: 0, zIndex: 1000, marginTop: 4, background: "#FFFDF5", border: "1.5px solid #D4C5A9", borderRadius: 10, boxShadow: "0 8px 32px rgba(0,0,0,0.14)", padding: 12, minWidth: 230 }}>
@@ -223,11 +227,6 @@ function NavCtrl({ selDate, setSelDate, viewMode, setViewMode, showDayView, extr
           </div>
         </div>
       </>)}
-    </div>
-    <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
-      {showDayView && [{ k: "day", l: "日" }, { k: "week", l: "週" }].map(v => (
-        <button key={v.k} onClick={() => setViewMode(v.k)} style={{ padding: "5px 12px", borderRadius: 6, border: `1.5px solid ${viewMode === v.k ? "#C2563A" : "#D4C5A9"}`, background: viewMode === v.k ? "#FFF0EB" : "#FFFDF5", color: viewMode === v.k ? "#C2563A" : "#5A4A3A", cursor: "pointer", fontWeight: 600, fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif" }}>{v.l}</button>
-      ))}{extra}
     </div>
   </div>);
 }
@@ -504,7 +503,7 @@ function AdminDetail({ appt, appts, onClose, onDelete, onUpdate, onAlert, onCopy
   return (<div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
     <div style={{ background: `${t.color}12`, border: `1.5px solid ${t.color}40`, borderRadius: 9, padding: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-        <div style={{ width: 28, height: 28, borderRadius: "50%", background: t.color, color: "white", fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" }}>{t.id === "X" ? "?" : t.id}</div>
+        <div style={{ width: 28, height: 28, borderRadius: "50%", background: t.color, color: "white", fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" }}>{thLabel(t)}</div>
         <div style={{ flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <span style={{ fontWeight: 700, color: "#3D2B1F", fontSize: 15 }}>{appt.patient}</span>
@@ -719,7 +718,7 @@ function PhoneLookup({ appts, luAppts, onDelete, onLuDelete }) {
     {q.length >= 2 && results.length === 0 && <div style={{ textAlign: "center", padding: "30px 0", color: "#8B7355" }}><div style={{ fontSize: 38, marginBottom: 8 }}>📭</div><p style={{ margin: 0, fontSize: 16 }}>查無今日以後的預約紀錄</p></div>}
     {results.length > 0 && <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}><p style={{ fontSize: 15, color: "#8B7355", margin: 0 }}>找到 {results.length} 筆</p>
       {results.map(a => { const isLu = a.sys === "lu"; const thObj = isLu ? null : (TH_MAP[a.therapist] || TH_MAP["X"]); const color = isLu ? LU_COLOR : thObj.color; const isToday = a.date === fd(new Date()); return (<div key={a.id} style={{ background: "#FFFDF5", border: `1.5px solid ${color}40`, borderRadius: 10, padding: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}><div style={{ width: 28, height: 28, borderRadius: "50%", background: color, color: "white", fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" }}>{isLu ? "盧" : (a.therapist === "X" ? "?" : a.therapist)}</div><span style={{ fontWeight: 700, color: "#3D2B1F", fontSize: 17 }}>{isLu ? "盧獨立時段" : thObj.name}</span>{isToday && <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, color: "#2E7D6F", background: "#E6F5EE", padding: "2px 8px", borderRadius: 4 }}>今日</span>}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}><div style={{ width: 28, height: 28, borderRadius: "50%", background: color, color: "white", fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" }}>{isLu ? "盧" : {thLabel(TH_MAP[a.therapist] || TH_MAP["X"])}}</div><span style={{ fontWeight: 700, color: "#3D2B1F", fontSize: 17 }}>{isLu ? "盧獨立時段" : thObj.name}</span>{isToday && <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, color: "#2E7D6F", background: "#E6F5EE", padding: "2px 8px", borderRadius: 4 }}>今日</span>}</div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontSize: 15 }}><div><span style={{ color: "#8B7355" }}>日期：</span><strong>{a.date}</strong></div><div><span style={{ color: "#8B7355" }}>時間：</span><strong>{a.time}</strong></div><div><span style={{ color: "#8B7355" }}>時長：</span>{a.duration} 分鐘</div><div><span style={{ color: "#8B7355" }}>患者：</span>{maskN(a.patient)}</div></div>
         {isToday
           ? <div style={{ marginTop: 10, padding: "8px 12px", borderRadius: 7, background: "#F5F0E5", border: "1px solid #E0D5C1", fontSize: 12, color: "#8B7355", textAlign: "center" }}>今日預約不可線上取消，如需取消請來電洽詢</div>
@@ -755,7 +754,7 @@ function AdminWeekGrid({ appts, selDate, onCellClick, onApptClick, filterTh, cs,
         const satAftBlock = isSatAft(date, time);
         const adminClosed = !occ && !satAftBlock && mainSlotCfg && (satAftBlock ? mainSlotCfg[`${ds}-${time}`] !== true : mainSlotCfg[`${ds}-${time}`] === false);
         const isBlocked = satAftBlock || adminClosed;
-        return (<td key={di} onClick={() => occ ? onApptClick(aa) : !dim && !isBlocked && onCellClick(date, time)} style={{ borderLeft: "1px solid #EDE5D5", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", padding: 0, height: 26, cursor: (dim || isBlocked) ? "default" : "pointer", position: "relative", background: isBlocked ? "#2A2A2A" : dim ? "#E8E3D8" : occ ? `${th.color}18` : "#FFFDF5", opacity: dim ? 0.5 : 1 }} onMouseEnter={e => { if (!occ && !dim && !isBlocked) e.currentTarget.style.background = "#F0E0C8"; }} onMouseLeave={e => { if (!occ && !dim && !isBlocked) e.currentTarget.style.background = "#FFFDF5"; }}>{as && (()=>{ const asth = TH_MAP[as.therapist] || TH_MAP["X"]; return (<div style={{ position: "absolute", top: 1, left: 1, right: 1, height: (as.duration / 15) * 26 - 2, background: `linear-gradient(135deg, ${asth.color}EE, ${asth.color}AA)`, borderRadius: 3, zIndex: 2, padding: "2px 4px", color: "white", fontSize: 10, fontWeight: 600, overflow: "hidden", display: "flex", flexDirection: "column", border: as.checkedIn ? "2px solid #FFD700" : as.onDuty ? "none" : "1.5px dashed rgba(255,255,255,0.6)" }}><div style={{ display: "flex", justifyContent: "space-between" }}><span>{as.patient.slice(0, 3)}</span><span style={{ opacity: 0.8, fontSize: 9 }}>{asth.id === "X" ? "?" : asth.id}</span></div>{as.duration >= 30 && <span style={{ fontSize: 9, opacity: 0.75 }}>{as.duration}m·{as.onDuty ? "內" : "外"}</span>}</div>);})()}</td>); })}</tr>); })}</tbody>
+        return (<td key={di} onClick={() => occ ? onApptClick(aa) : !dim && !isBlocked && onCellClick(date, time)} style={{ borderLeft: "1px solid #EDE5D5", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", padding: 0, height: 26, cursor: (dim || isBlocked) ? "default" : "pointer", position: "relative", background: isBlocked ? "#2A2A2A" : dim ? "#E8E3D8" : occ ? `${th.color}18` : "#FFFDF5", opacity: dim ? 0.5 : 1 }} onMouseEnter={e => { if (!occ && !dim && !isBlocked) e.currentTarget.style.background = "#F0E0C8"; }} onMouseLeave={e => { if (!occ && !dim && !isBlocked) e.currentTarget.style.background = "#FFFDF5"; }}>{as && (()=>{ const asth = TH_MAP[as.therapist] || TH_MAP["X"]; return (<div style={{ position: "absolute", top: 1, left: 1, right: 1, height: (as.duration / 15) * 26 - 2, background: `linear-gradient(135deg, ${asth.color}EE, ${asth.color}AA)`, borderRadius: 3, zIndex: 2, padding: "2px 4px", color: "white", fontSize: 10, fontWeight: 600, overflow: "hidden", display: "flex", flexDirection: "column", border: as.checkedIn ? "2px solid #FFD700" : as.onDuty ? "none" : "1.5px dashed rgba(255,255,255,0.6)" }}><div style={{ display: "flex", justifyContent: "space-between" }}><span>{as.patient.slice(0, 3)}</span><span style={{ opacity: 0.8, fontSize: 9 }}>{thLabel(asth)}</span></div>{as.duration >= 30 && <span style={{ fontSize: 9, opacity: 0.75 }}>{as.duration}m·{as.onDuty ? "內" : "外"}</span>}</div>);})()}</td>); })}</tr>); })}</tbody>
   </table></div>);
 }
 
@@ -776,7 +775,21 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
   const [showPrint, setShowPrint] = useState(false);
   const printContent = useMemo(() => {
     const dateLabel = `${selDate.getFullYear()}/${selDate.getMonth() + 1}/${selDate.getDate()} ${WDAY[(selDate.getDay() + 6) % 7]}`;
-    const rows = []; SLOTS.forEach(time => { const starts = dayA.filter(a => a.time === time); starts.forEach(a => { const th = TH_MAP[a.therapist] || TH_MAP["X"]; const tid = th.id === "X" ? "?" : th.id; const ttLabel = getApptTreatLabel(a); rows.push({ time: a.time, tid, color: th.color, patient: a.patient, chartNum: a.chartNum, birthday: a.birthday, duration: a.duration, ttLabel, onDuty: a.onDuty, selfRef: a.selfRef }); }); });
+    const rows = [];
+    SLOTS.forEach(time => {
+      const satAft = isSatAft(selDate, time);
+      const k = `${ds}-${time}`;
+      const closed = satAft ? mainSlotCfg[k] !== true : mainSlotCfg[k] === false;
+      const starts = dayA.filter(a => a.time === time);
+      if (starts.length > 0) {
+        starts.forEach(a => {
+          const th = TH_MAP[a.therapist] || TH_MAP["X"];
+          rows.push({ time, thLabel: thLabel(th), color: th.color, patient: a.patient, chartNum: a.chartNum, birthday: a.birthday, duration: a.duration, ttLabel: getApptTreatLabel(a), type: "appt" });
+        });
+      } else {
+        rows.push({ time, type: closed ? "closed" : "empty" });
+      }
+    });
     return { dateLabel, rows };
   }, [selDate, dayA]);
   return (<div>
@@ -794,7 +807,7 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
         // Helper: render one appt row (used for both starts and continuations)
         const renderApptRow = (aa, isCont) => { const th = TH_MAP[aa.therapist] || TH_MAP["X"]; return (
           <div key={aa.id} onClick={() => onApptClick(aa)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", cursor: "pointer", borderLeft: aa.checkedIn ? "3px solid #FFD700" : isCont ? `3px solid ${th.color}50` : "3px solid transparent", background: isCont ? `${th.color}07` : "transparent" }}>
-            <div style={{ width: 22, height: 22, borderRadius: "50%", background: isCont ? `${th.color}90` : th.color, flexShrink: 0, color: "white", fontWeight: 700, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>{th.id === "X" ? "?" : th.id}</div>
+            <div style={{ width: 22, height: 22, borderRadius: "50%", background: isCont ? `${th.color}90` : th.color, flexShrink: 0, color: "white", fontWeight: 700, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>{thLabel(th)}</div>
             <span style={{ fontWeight: isCont ? 500 : 700, color: isCont ? "#6A5A4A" : "#3D2B1F", fontSize: 14 }}>{aa.patient}</span>
             {isCont && <span style={{ fontSize: 10, color: "#B5A898", flexShrink: 0 }}>（續）</span>}
             {!isCont && aa.note && <span style={{ color: "#8B7355", fontSize: 12, maxWidth: 80, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>({aa.note})</span>}
@@ -822,44 +835,63 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
         </tr>); })}</tbody></table></div>
     {showPrint && (
       <div style={{ position: "fixed", inset: 0, zIndex: 1200, background: "white", overflowY: "auto", padding: 24 }}>
-        <style>{`@media print { body * { visibility: hidden !important; } .print-overlay, .print-overlay * { visibility: visible !important; } .print-overlay { position: fixed !important; left: 0; top: 0; right: 0; bottom: 0; overflow: visible !important; padding: 20px; } .no-print { display: none !important; } }`}</style>
+        <style>{`
+          @media print {
+            body * { visibility: hidden !important; }
+            .print-overlay, .print-overlay * { visibility: visible !important; }
+            .print-overlay { position: fixed !important; left: 0; top: 0; right: 0; bottom: 0; overflow: visible !important; padding: 8mm 10mm; box-sizing: border-box; }
+            .no-print { display: none !important; }
+            @page { size: A4 portrait; margin: 0; }
+          }
+        `}</style>
         <div className="print-overlay">
-        <div className="no-print" style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-          <button onClick={() => { window.print(); }} style={{ padding: "10px 28px", borderRadius: 8, border: "none", background: "#3D2B1F", color: "white", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>🖨️ 列印此頁</button>
-          <button onClick={() => setShowPrint(false)} style={{ padding: "10px 20px", borderRadius: 8, border: "1.5px solid #D4C5A9", background: "white", color: "#5A4A3A", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>✕ 關閉</button>
+          <div className="no-print" style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+            <button onClick={() => window.print()} style={{ padding: "10px 28px", borderRadius: 8, border: "none", background: "#3D2B1F", color: "white", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>🖨️ 列印此頁</button>
+            <button onClick={() => setShowPrint(false)} style={{ padding: "10px 20px", borderRadius: 8, border: "1.5px solid #D4C5A9", background: "white", color: "#5A4A3A", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>✕ 關閉</button>
+          </div>
+          {/* Header */}
+          <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 4 }}>
+            <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "'Noto Sans TC', sans-serif", color: "#1A1A1A" }}>徒手治療預約 — 日報表</div>
+            <div style={{ fontSize: 11, color: "#555" }}>{printContent.dateLabel}</div>
+            <div style={{ fontSize: 11, color: "#555", marginLeft: "auto" }}>預約 {stats.t} 筆・{stats.m} 分</div>
+          </div>
+          {/* Compact table */}
+          <table style={{ borderCollapse: "collapse", width: "100%", fontFamily: "'Noto Sans TC', sans-serif", fontSize: 10, tableLayout: "fixed" }}>
+            <colgroup>
+              <col style={{ width: "13%" }} />
+              <col style={{ width: "87%" }} />
+            </colgroup>
+            <tbody>
+              {printContent.rows.map((r, i) => {
+                const isH = r.time.endsWith(":00");
+                const isBr = r.time === "14:00";
+                const rowH = r.type === "appt" ? "auto" : "16px";
+                const bg = r.type === "closed" ? "#1A1A1A" : "white";
+                const bdTop = isBr ? "2px solid #C2563A" : isH ? "1px solid #888" : "1px solid #ddd";
+                return (
+                  <tr key={i} style={{ borderTop: bdTop }}>
+                    <td style={{ padding: "1px 4px", textAlign: "center", fontWeight: isH ? 700 : 400, color: r.type === "closed" ? "rgba(255,255,255,0.5)" : isH ? "#222" : "#666", fontSize: isH ? 10 : 9, background: r.type === "closed" ? "#1A1A1A" : isH ? "#F5F0E5" : "white", borderRight: "1px solid #ccc", whiteSpace: "nowrap", height: rowH }}>
+                      {r.time}
+                    </td>
+                    <td style={{ padding: r.type === "appt" ? "2px 6px" : "1px 6px", background: bg, height: rowH, verticalAlign: "middle" }}>
+                      {r.type === "appt" && (
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                          <span style={{ display: "inline-block", width: 14, height: 14, borderRadius: "50%", background: r.color, color: "white", textAlign: "center", lineHeight: "14px", fontSize: 8, fontWeight: 700, flexShrink: 0 }}>{r.thLabel}</span>
+                          <strong style={{ fontSize: 10 }}>{r.patient}</strong>
+                          <span style={{ color: "#666", fontSize: 9 }}>{r.chartNum ? `#${r.chartNum}` : r.birthday}</span>
+                          <span style={{ fontSize: 9, color: "#555" }}>{r.duration}分</span>
+                          <span style={{ fontSize: 9, color: "#444", background: "#eee", padding: "0 3px", borderRadius: 2 }}>{r.ttLabel}</span>
+                        </span>
+                      )}
+                      {r.type === "closed" && <span style={{ fontSize: 9, color: "rgba(255,255,255,0.4)" }}>未開放</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
-        <h1 style={{ fontSize: 18, margin: "0 0 4px", fontFamily: "'Noto Sans TC', sans-serif", color: "#333" }}>🤲 徒手治療預約 — 日報表</h1>
-        <h2 style={{ fontSize: 13, color: "#888", margin: "0 0 14px", fontWeight: "normal" }}>{printContent.dateLabel}</h2>
-        <div style={{ display: "flex", gap: 16, marginBottom: 12, fontSize: 12, color: "#555" }}>
-          <span>預約：<strong style={{ color: "#222" }}>{stats.t}</strong></span>
-          <span>時數：<strong style={{ color: "#222" }}>{stats.m}</strong>分</span>
-          <span style={{ color: "#2E7D6F" }}>班內：<strong>{stats.on}</strong></span>
-          <span style={{ color: "#C2563A" }}>班外：<strong>{stats.off}</strong></span>
-        </div>
-        <table style={{ borderCollapse: "collapse", width: "100%", fontFamily: "'Noto Sans TC', sans-serif", fontSize: 13 }}>
-          <thead><tr>
-            <th style={{ padding: "8px 10px", border: "1px solid #ccc", background: "#f5f0e5", width: 70, textAlign: "center" }}>時間</th>
-            <th style={{ padding: "8px 10px", border: "1px solid #ccc", background: "#f5f0e5", textAlign: "left" }}>預約</th>
-          </tr></thead>
-          <tbody>
-            {printContent.rows.map((r, i) => (
-              <tr key={i}>
-                <td style={{ padding: "6px 10px", border: "1px solid #ccc", textAlign: "center", fontWeight: 700 }}>{r.time}</td>
-                <td style={{ padding: "6px 10px", border: "1px solid #ccc" }}>
-                  <span style={{ display: "inline-block", width: 20, height: 20, borderRadius: "50%", background: r.color, color: "white", textAlign: "center", lineHeight: "20px", fontSize: 11, fontWeight: 700, marginRight: 8 }}>{r.tid}</span>
-                  <strong>{r.patient}</strong>
-                  <span style={{ color: "#888", marginLeft: 10 }}>{r.chartNum ? `#${r.chartNum}` : r.birthday}</span>
-                  <span style={{ marginLeft: 10 }}>{r.duration}分</span>
-                  <span style={{ marginLeft: 10, padding: "2px 6px", borderRadius: 3, fontSize: 11, background: "#f5f0e5" }}>{r.ttLabel}</span>
-                  <span style={{ marginLeft: 6, padding: "2px 6px", borderRadius: 3, fontSize: 11, background: r.onDuty ? "#e6f5ee" : "#fff0eb", color: r.onDuty ? "#2E7D6F" : "#C2563A" }}>{r.onDuty ? "班內" : "班外"}</span>
-                  <span style={{ marginLeft: 6, padding: "2px 6px", borderRadius: 3, fontSize: 11, background: r.selfRef ? "#eeeeff" : "#fff8e6", color: r.selfRef ? "#5B6ABF" : "#B8860B" }}>{r.selfRef ? "自轉" : "非自轉"}</span>
-                </td>
-              </tr>
-            ))}
-            {printContent.rows.length === 0 && <tr><td colSpan={2} style={{ padding: 20, textAlign: "center", color: "#aaa", border: "1px solid #ccc" }}>今日無預約</td></tr>}
-          </tbody>
-        </table>
-      </div></div>
+      </div>
     )}
   </div>);
 }
@@ -867,7 +899,7 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
 /* ═══════════════════════════════════════════ Admin Lookup ═══════════════════════════════════════════ */
 function AdminLookup({ appts, luAppts, onApptClick, onLuApptClick }) {
   const [query, setQuery] = useState("");
-  const [mode, setMode] = useState("bday"); // "id" | "bday" | "chart"
+  const [mode, setMode] = useState("chart"); // "id" | "bday" | "chart"
   const q = query.trim().toUpperCase();
   const qRaw = query.trim();
 
@@ -904,7 +936,7 @@ function AdminLookup({ appts, luAppts, onApptClick, onLuApptClick }) {
         style={{ ...rowStyle, background: isPast ? "#F8F4EE" : "#FFFDF5", opacity: isPast ? 0.75 : 1 }}
         onMouseEnter={e => e.currentTarget.style.background = isPast ? "#F0E8DC" : "#FFF0EB"}
         onMouseLeave={e => e.currentTarget.style.background = isPast ? "#F8F4EE" : "#FFFDF5"}>
-        <div style={{ width: 24, height: 24, borderRadius: "50%", background: color, color: "white", fontWeight: 700, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{isLu ? "盧" : (thObj.id === "X" ? "?" : thObj.id)}</div>
+        <div style={{ width: 24, height: 24, borderRadius: "50%", background: color, color: "white", fontWeight: 700, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{isLu ? "盧" : {thLabel(thObj)}}</div>
         <div>
           <div style={{ fontWeight: 700, color: "#3D2B1F" }}>{a.patient} <span style={{ fontWeight: 400, fontSize: 11, color: "#8B7355" }}>{a.chartNum ? `#${a.chartNum}` : `生日：${a.birthday}`}</span></div>
           <div style={{ fontSize: 11, color: "#8B7355" }}>{isLu ? "盧獨立時段" : thObj.name} · {isLu ? "班外" : (a.onDuty ? "班內" : "班外")} · {a.selfRef ? "自轉" : "非自轉"}</div>
@@ -1038,7 +1070,7 @@ function ShiftEditor({ customShifts, setCustomShifts }) {
   const th = TH_MAP[selTh];
   return (<div>
     <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
-      <div style={{ display: "flex", gap: 4 }}>{THERAPISTS.map(t => (<button key={t.id} onClick={() => setSelTh(t.id)} style={{ width: 36, height: 36, borderRadius: "50%", cursor: "pointer", background: selTh === t.id ? t.color : `${t.color}20`, color: selTh === t.id ? "white" : t.color, border: selTh === t.id ? `2px solid ${t.color}` : "2px solid transparent", fontWeight: 700, fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}>{t.id}</button>))}</div>
+      <div style={{ display: "flex", gap: 4 }}>{THERAPISTS.map(t => (<button key={t.id} onClick={() => setSelTh(t.id)} style={{ width: 36, height: 36, borderRadius: "50%", cursor: "pointer", background: selTh === t.id ? t.color : `${t.color}20`, color: selTh === t.id ? "white" : t.color, border: selTh === t.id ? `2px solid ${t.color}` : "2px solid transparent", fontWeight: 700, fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}>{thLabel(t)}</button>))}</div>
       <input type="month" value={month} onChange={e => setMonth(e.target.value)} style={{ padding: "6px 10px", borderRadius: 7, border: "1.5px solid #D4C5A9", fontSize: 13, background: "#FFFDF5", fontFamily: "'Noto Sans TC', sans-serif", outline: "none" }} />
       <button onClick={() => { const u = {}; dates.forEach(({ ds }) => { u[`${selTh}-${ds}`] = []; }); setCustomShifts(prev => ({ ...prev, ...u })); }} style={{ padding: "6px 12px", borderRadius: 6, border: "1.5px solid #C2563A", background: "#FFF0EB", color: "#C2563A", cursor: "pointer", fontWeight: 600, fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}>全月清除</button>
     </div>
@@ -1459,7 +1491,7 @@ function ThFilterBar({ filterTh, setFilterTh, showNames, onLuClick }) {
         if (onLuClick && t.id === "B" && !sel) { onLuClick(); return; }
         setFilterTh(sel ? null : t.id);
       }} style={{ display: "flex", alignItems: "center", gap: 3, padding: showNames ? "4px 10px" : "0", width: showNames ? "auto" : 26, height: showNames ? 30 : 26, borderRadius: showNames ? 15 : "50%", cursor: "pointer", background: sel ? t.color : `${t.color}20`, color: sel ? "white" : t.color, border: sel ? `2px solid ${t.color}` : "2px solid transparent", outline: sel ? `2px solid ${t.color}` : "none", outlineOffset: sel ? "2px" : "0", fontWeight: 700, fontSize: showNames ? 12 : 10, fontFamily: "'Noto Sans TC', sans-serif", transition: "all 0.15s" }}>
-        <span style={{ width: showNames ? "auto" : "100%", textAlign: "center" }}>{t.id}</span>
+        <span style={{ width: showNames ? "auto" : "100%", textAlign: "center" }}>{	hLabel(t)}</span>
         {showNames && <span style={{ fontWeight: 500, fontSize: showNames ? 11 : 9 }}>{t.name}</span>}
       </button>
     ); })}
@@ -1518,12 +1550,17 @@ export default function App() {
   const [alertMsg, setAlertMsg] = useState("");
   const [luChoiceModal, setLuChoiceModal] = useState(false);
 
+  // ── Undo history (up to 5 steps) ──
+  const [undoStack, setUndoStack] = useState([]); // [{type, payload}]
+  const pushUndo = (entry) => setUndoStack(prev => [entry, ...prev].slice(0, 5));
+  const canUndo = undoStack.length > 0;
+
   // ── Main appts handlers ──
   const handleBook = async (appt) => {
     try {
       const { id, ...data } = appt;
-      await addDoc(collection(db, "appts"), data);
-      console.log("appt written OK");
+      const ref = await addDoc(collection(db, "appts"), data);
+      pushUndo({ type: "addAppt", id: ref.id, collection: "appts" });
     } catch (e) {
       console.error("handleBook error:", e);
       setAlertMsg("預約寫入失敗：" + e.message);
@@ -1531,6 +1568,8 @@ export default function App() {
   };
   const handleDelete = async (id) => {
     try {
+      const snap = appts.find(a => a.id === id);
+      if (snap) { const { id: _id, ...data } = snap; pushUndo({ type: "deleteAppt", id, data, collection: "appts" }); }
       await deleteDoc(doc(db, "appts", id));
       setAdminDetailModal(null);
     } catch (e) { console.error("delete error:", e); setAlertMsg("刪除失敗：" + e.message); }
@@ -1543,9 +1582,26 @@ export default function App() {
   };
   const handleUpdate = async (id, ch) => {
     try {
+      const prev = appts.find(a => a.id === id);
+      if (prev) { const rollback = {}; Object.keys(ch).forEach(k => { rollback[k] = prev[k]; }); pushUndo({ type: "updateAppt", id, rollback, collection: "appts" }); }
       await updateDoc(doc(db, "appts", id), ch);
-      setAdminDetailModal(prev => prev?.id === id ? { ...prev, ...ch } : prev);
+      setAdminDetailModal(prev2 => prev2?.id === id ? { ...prev2, ...ch } : prev2);
     } catch (e) { console.error("update error:", e); setAlertMsg("更新失敗：" + e.message); }
+  };
+  const handleUndo = async () => {
+    if (!undoStack.length) return;
+    const [entry, ...rest] = undoStack;
+    setUndoStack(rest);
+    try {
+      if (entry.type === "addAppt") {
+        await deleteDoc(doc(db, entry.collection, entry.id));
+      } else if (entry.type === "deleteAppt") {
+        await addDoc(collection(db, entry.collection), entry.data);
+      } else if (entry.type === "updateAppt") {
+        await updateDoc(doc(db, entry.collection, entry.id), entry.rollback);
+      }
+      setAlertMsg("✅ 已復原上一步");
+    } catch (e) { setAlertMsg("復原失敗：" + e.message); }
   };
   const handleCopyDates = async (appt, targets) => {
     const batch = writeBatch(db);
@@ -1624,7 +1680,9 @@ export default function App() {
         <div style={{ display: "flex", gap: 3, alignItems: "center", flexWrap: "wrap" }}>
           {isAdmin ? (<>
             {[{ k: "schedule", l: "排程表" }, { k: "lu", l: "盧獨立時段" }, { k: "lookup", l: "🔍 查詢" }, { k: "salary", l: "薪資" }, { k: "shifts", l: "班表" }].map(t => (<button key={t.k} onClick={() => setAdminTab(t.k)} style={{ padding: "5px 10px", borderRadius: 5, border: "none", cursor: "pointer", background: adminTab === t.k ? (t.k === "lu" ? LU_COLOR : "#C2563A") : "rgba(255,255,255,0.1)", color: adminTab === t.k ? "white" : "#C4B49A", fontWeight: 600, fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}>{t.l}</button>))}
-            <div style={{ width: 1, height: 18, background: "#5A4A3A", margin: "0 4px" }} /><button onClick={() => setPage("front")} style={{ padding: "5px 10px", borderRadius: 5, border: "1px solid #C4B49A55", background: "transparent", color: "#C4B49A", cursor: "pointer", fontSize: 13 }}>返回前台</button>
+            <div style={{ width: 1, height: 18, background: "#5A4A3A", margin: "0 4px" }} />
+            {canUndo && <button onClick={handleUndo} style={{ padding: "5px 10px", borderRadius: 5, border: "1px solid #C4B49A55", background: "rgba(255,255,255,0.08)", color: "#F0C080", cursor: "pointer", fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif" }} title={`可復原 ${undoStack.length} 步`}>↩ 上一步</button>}
+            <button onClick={() => setPage("front")} style={{ padding: "5px 10px", borderRadius: 5, border: "1px solid #C4B49A55", background: "transparent", color: "#C4B49A", cursor: "pointer", fontSize: 13 }}>返回前台</button>
           </>) : (<>
             {[{ k: "book", l: "📅 預約" }, { k: "lookup", l: "🔍 查詢及取消" }].map(t => (<button key={t.k} onClick={() => setFrontTab(t.k)} style={{ padding: "6px 12px", borderRadius: 5, border: "none", cursor: "pointer", background: frontTab === t.k ? "#C2563A" : "rgba(255,255,255,0.1)", color: frontTab === t.k ? "white" : "#C4B49A", fontWeight: 600, fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}>{t.l}</button>))}
             <div style={{ width: 1, height: 18, background: "#5A4A3A", margin: "0 4px" }} /><button onClick={() => setPage("admin-gate")} style={{ padding: "5px 10px", borderRadius: 5, border: "1px solid #C4B49A55", background: "transparent", color: "#C4B49A", cursor: "pointer", fontSize: 10 }}>🔐 後台</button>
@@ -1655,7 +1713,7 @@ export default function App() {
       {page === "admin-gate" && <PwGate onAuth={() => setPage("admin")} />}
 
       {/* ── ADMIN ── */}
-      {isAdmin && adminTab === "schedule" && (<><NavCtrl selDate={selDate} setSelDate={setSelDate} viewMode={adminView} setViewMode={setAdminView} showDayView={true} /><ThFilterBar filterTh={filterTh} setFilterTh={setFilterTh} /><div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10, padding: "5px 12px", background: "#FFFDF5", borderRadius: 7, border: "1px solid #E0D5C1", fontSize: 13, alignItems: "center" }}>{THERAPISTS.map(t => (<span key={t.id} style={{ display: "flex", alignItems: "center", gap: 3 }}><span style={{ display: "inline-flex", width: 14, height: 14, borderRadius: "50%", background: t.color, color: "white", fontSize: 8, fontWeight: 700, alignItems: "center", justifyContent: "center" }}>{t.id}</span><span>{t.name}</span></span>))}<span style={{ borderLeft: "1px solid #D4C5A9", paddingLeft: 8, display: "flex", gap: 6 }}><span style={{ color: "#2E7D6F", fontWeight: 600 }}>■班內</span><span style={{ color: "#C2563A", fontWeight: 600 }}>┈班外</span><span style={{ color: "#FFD700", fontWeight: 600 }}>▮已報到</span></span></div>
+      {isAdmin && adminTab === "schedule" && (<><NavCtrl selDate={selDate} setSelDate={setSelDate} viewMode={adminView} setViewMode={setAdminView} showDayView={true} /><ThFilterBar filterTh={filterTh} setFilterTh={setFilterTh} /><div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10, padding: "5px 12px", background: "#FFFDF5", borderRadius: 7, border: "1px solid #E0D5C1", fontSize: 13, alignItems: "center" }}>{THERAPISTS.map(t => (<span key={t.id} style={{ display: "flex", alignItems: "center", gap: 3 }}><span style={{ display: "inline-flex", width: 14, height: 14, borderRadius: "50%", background: t.color, color: "white", fontSize: 8, fontWeight: 700, alignItems: "center", justifyContent: "center" }}>{	hLabel(t)}</span><span>{t.name}</span></span>))}<span style={{ borderLeft: "1px solid #D4C5A9", paddingLeft: 8, display: "flex", gap: 6 }}><span style={{ color: "#2E7D6F", fontWeight: 600 }}>■班內</span><span style={{ color: "#C2563A", fontWeight: 600 }}>┈班外</span><span style={{ color: "#FFD700", fontWeight: 600 }}>▮已報到</span></span></div>
         {adminView === "day" ? <AdminDayView appts={appts} selDate={selDate} onCellClick={(d, t) => setBookingModal({ date: d, time: t })} onApptClick={a => setAdminDetailModal(a)} mainSlotCfg={mainSlotCfg} setMainSlotCfg={fireSetMainSlotCfg} /> : <AdminWeekGrid appts={appts} selDate={selDate} onCellClick={(d, t) => setBookingModal({ date: d, time: t })} onApptClick={a => setAdminDetailModal(a)} filterTh={filterTh} cs={cs} mainSlotCfg={mainSlotCfg} />}</>)}
 
       {isAdmin && adminTab === "lu" && (<><NavCtrl selDate={selDate} setSelDate={setSelDate} viewMode={luAdminView} setViewMode={setLuAdminView} showDayView={true} />
