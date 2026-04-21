@@ -840,16 +840,24 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
       <div style={{ position: "fixed", inset: 0, zIndex: 1200, background: "white", overflowY: "auto" }}>
         <style>{`
           @media print {
-            body * { visibility: hidden !important; }
-            #print-root, #print-root * { visibility: visible !important; }
-            #print-root { position: absolute !important; top: 0; left: 0; width: 100%; filter: grayscale(100%); }
+            body > *:not(#print-portal) { display: none !important; }
+            #print-portal { display: block !important; filter: grayscale(100%); padding: 0; }
             .no-print { display: none !important; }
             @page { size: A4 portrait; margin: 8mm 10mm; }
           }
         `}</style>
         <div id="print-root" style={{ padding: "16px 20px", maxWidth: 780, margin: "0 auto" }}>
           <div className="no-print" style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-            <button onClick={() => window.print()} style={{ padding: "10px 28px", borderRadius: 8, border: "none", background: "#3D2B1F", color: "white", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>🖨️ 列印此頁</button>
+            <button onClick={() => {
+              const src = document.getElementById("print-root");
+              const clone = src.cloneNode(true);
+              clone.id = "print-portal";
+              // Remove no-print buttons from clone
+              clone.querySelectorAll(".no-print").forEach(el => el.remove());
+              document.body.appendChild(clone);
+              window.print();
+              document.body.removeChild(clone);
+            }} style={{ padding: "10px 28px", borderRadius: 8, border: "none", background: "#3D2B1F", color: "white", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>🖨️ 列印此頁</button>
             <button onClick={() => setShowPrint(false)} style={{ padding: "10px 20px", borderRadius: 8, border: "1.5px solid #D4C5A9", background: "white", color: "#5A4A3A", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>✕ 關閉</button>
           </div>
           {/* Header */}
