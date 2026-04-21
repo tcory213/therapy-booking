@@ -168,7 +168,13 @@ function ConfirmModal({ open, message, onOk, onCancel }) {
   </div>);
 }
 function NavCtrl({ selDate, setSelDate, viewMode, setViewMode, showDayView, extra }) {
-  const nav = dir => setSelDate(d => { const n = new Date(d); n.setDate(n.getDate() + dir * (viewMode === "week" ? 7 : 1)); return n; });
+  const nav = dir => setSelDate(d => {
+    if (viewMode === "week") { const n = new Date(d); n.setDate(n.getDate() + dir * 7); return n; }
+    // Day view: skip Sunday
+    let n = new Date(d); n.setDate(n.getDate() + dir);
+    if (n.getDay() === 0) n.setDate(n.getDate() + dir); // skip Sunday
+    return n;
+  });
   const [showCal, setShowCal] = useState(false);
   const [calYM, setCalYM] = useState(() => ({ y: selDate.getFullYear(), m: selDate.getMonth() }));
 
@@ -210,8 +216,9 @@ function NavCtrl({ selDate, setSelDate, viewMode, setViewMode, showDayView, extr
               const isToday = ds2 === todayStr;
               const isSel = ds2 === fd(selDate);
               const dow = (calOffset + i) % 7; // 0=Mon…6=Sun
-              return (<button key={day} onClick={() => { const d = new Date(calYM.y, calYM.m, day); setSelDate(d); setShowCal(false); }}
-                style={{ padding: "4px 0", textAlign: "center", borderRadius: 5, border: isSel ? "2px solid #C2563A" : "none", background: isSel ? "#FFF0EB" : isToday ? "#F5EDDC" : "transparent", color: isSel ? "#C2563A" : dow >= 5 ? "#C2563A" : "#3D2B1F", fontWeight: isSel || isToday ? 700 : 400, fontSize: 12, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>{day}</button>);
+              const isSun = dow === 6; // Mon-based: 6=Sun
+              return (<button key={day} onClick={() => { if (isSun) return; const d = new Date(calYM.y, calYM.m, day); setSelDate(d); setShowCal(false); }}
+                style={{ padding: "4px 0", textAlign: "center", borderRadius: 5, border: isSel ? "2px solid #C2563A" : "none", background: isSel ? "#FFF0EB" : isToday ? "#F5EDDC" : "transparent", color: isSun ? "#C4B49A" : isSel ? "#C2563A" : dow >= 5 ? "#C2563A" : "#3D2B1F", fontWeight: isSel || isToday ? 700 : 400, fontSize: 12, cursor: isSun ? "default" : "pointer", fontFamily: "'Noto Sans TC', sans-serif", opacity: isSun ? 0.35 : 1 }}>{day}</button>);
             })}
           </div>
         </div>
@@ -734,7 +741,7 @@ function PhoneLookup({ appts, luAppts, onDelete, onLuDelete }) {
 }
 
 /* ═══════════════════════════════════════════ Admin Grids (main) ═══════════════════════════════════════════ */
-function AdminWeekGrid({ appts, selDate, onCellClick, onApptClick, filterTh, cs }) {
+function AdminWeekGrid({ appts, selDate, onCellClick, onApptClick, filterTh, cs, mainSlotCfg }) {
   const wd = useMemo(() => weekDates(selDate), [selDate]);
   const dsArr = useMemo(() => wd.map(d => fd(d)), [wd]);
   const todayStr = useMemo(() => fd(new Date()), []);
@@ -746,7 +753,9 @@ function AdminWeekGrid({ appts, selDate, onCellClick, onApptClick, filterTh, cs 
         const fState = filterTh && !occ ? getPeriodStateAt(filterTh, date, time, cs) : null;
         const dim = filterTh && !occ && fState !== "on" && fState !== "off";
         const satAftBlock = isSatAft(date, time);
-        return (<td key={di} onClick={() => occ ? onApptClick(aa) : !dim && !satAftBlock && onCellClick(date, time)} style={{ borderLeft: "1px solid #EDE5D5", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", padding: 0, height: 26, cursor: (dim || satAftBlock) ? "default" : "pointer", position: "relative", background: satAftBlock ? "#2A2A2A" : dim ? "#E8E3D8" : occ ? `${th.color}18` : "#FFFDF5", opacity: dim ? 0.5 : 1 }} onMouseEnter={e => { if (!occ && !dim && !satAftBlock) e.currentTarget.style.background = "#F0E0C8"; }} onMouseLeave={e => { if (!occ && !dim && !satAftBlock) e.currentTarget.style.background = "#FFFDF5"; }}>{as && (()=>{ const asth = TH_MAP[as.therapist] || TH_MAP["X"]; return (<div style={{ position: "absolute", top: 1, left: 1, right: 1, height: (as.duration / 15) * 26 - 2, background: `linear-gradient(135deg, ${asth.color}EE, ${asth.color}AA)`, borderRadius: 3, zIndex: 2, padding: "2px 4px", color: "white", fontSize: 10, fontWeight: 600, overflow: "hidden", display: "flex", flexDirection: "column", border: as.checkedIn ? "2px solid #FFD700" : as.onDuty ? "none" : "1.5px dashed rgba(255,255,255,0.6)" }}><div style={{ display: "flex", justifyContent: "space-between" }}><span>{as.patient.slice(0, 3)}</span><span style={{ opacity: 0.8, fontSize: 9 }}>{asth.id === "X" ? "?" : asth.id}</span></div>{as.duration >= 30 && <span style={{ fontSize: 9, opacity: 0.75 }}>{as.duration}m·{as.onDuty ? "內" : "外"}</span>}</div>);})()}</td>); })}</tr>); })}</tbody>
+        const adminClosed = !occ && !satAftBlock && mainSlotCfg && (satAftBlock ? mainSlotCfg[`${ds}-${time}`] !== true : mainSlotCfg[`${ds}-${time}`] === false);
+        const isBlocked = satAftBlock || adminClosed;
+        return (<td key={di} onClick={() => occ ? onApptClick(aa) : !dim && !isBlocked && onCellClick(date, time)} style={{ borderLeft: "1px solid #EDE5D5", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", padding: 0, height: 26, cursor: (dim || isBlocked) ? "default" : "pointer", position: "relative", background: isBlocked ? "#2A2A2A" : dim ? "#E8E3D8" : occ ? `${th.color}18` : "#FFFDF5", opacity: dim ? 0.5 : 1 }} onMouseEnter={e => { if (!occ && !dim && !isBlocked) e.currentTarget.style.background = "#F0E0C8"; }} onMouseLeave={e => { if (!occ && !dim && !isBlocked) e.currentTarget.style.background = "#FFFDF5"; }}>{as && (()=>{ const asth = TH_MAP[as.therapist] || TH_MAP["X"]; return (<div style={{ position: "absolute", top: 1, left: 1, right: 1, height: (as.duration / 15) * 26 - 2, background: `linear-gradient(135deg, ${asth.color}EE, ${asth.color}AA)`, borderRadius: 3, zIndex: 2, padding: "2px 4px", color: "white", fontSize: 10, fontWeight: 600, overflow: "hidden", display: "flex", flexDirection: "column", border: as.checkedIn ? "2px solid #FFD700" : as.onDuty ? "none" : "1.5px dashed rgba(255,255,255,0.6)" }}><div style={{ display: "flex", justifyContent: "space-between" }}><span>{as.patient.slice(0, 3)}</span><span style={{ opacity: 0.8, fontSize: 9 }}>{asth.id === "X" ? "?" : asth.id}</span></div>{as.duration >= 30 && <span style={{ fontSize: 9, opacity: 0.75 }}>{as.duration}m·{as.onDuty ? "內" : "外"}</span>}</div>);})()}</td>); })}</tr>); })}</tbody>
   </table></div>);
 }
 
@@ -798,12 +807,12 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
             {aa.checkedIn && <span style={{ fontSize: 12, fontWeight: 700, color: "#FFD700" }}>✓到</span>}
           </div>); };
         return (<tr key={time} style={{ cursor: "pointer", ...(isBr ? { borderTop: "3px solid #C2563A" } : {}) }}><td onClick={() => onCellClick(selDate, time)} style={{ padding: "3px 8px", textAlign: "center", background: isH ? "#F0E8D8" : "#F8F2E6", borderRight: "2px solid #D4C5A9", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", fontWeight: isH ? 700 : 400, color: isH ? "#3D2B1F" : "#8B7355", height: 30 }}>{time}</td>
-          <td style={{ padding: 0, minHeight: 30, borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", background: closed ? "#F5F0E5" : "#FFFDF5" }}>
+          <td style={{ padding: 0, minHeight: 30, borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", background: closed ? "#2A2A2A" : "#FFFDF5" }}>
             {/* Starts at this time */}
             {starts.map(as => renderApptRow(as, false))}
             {/* Continuations: occupying this slot but started earlier */}
             {all.filter(aa => aa.time !== time).map(aa => renderApptRow(aa, true))}
-            {!occ && closed && <div style={{ padding: "0 10px", height: 30, display: "flex", alignItems: "center", fontSize: 13, color: "#B5A898" }}>已關閉</div>}
+            {!occ && closed && <div style={{ padding: "0 10px", height: 30, display: "flex", alignItems: "center", fontSize: 13, color: "rgba(255,255,255,0.5)" }}>已關閉</div>}
             {!occ && !closed && <div onClick={() => onCellClick(selDate, time)} style={{ padding: "0 10px", height: 30, display: "flex", alignItems: "center", fontSize: 13, color: "#C4B49A", cursor: "pointer" }}
               onMouseEnter={e => e.currentTarget.style.color = "#8B7355"} onMouseLeave={e => e.currentTarget.style.color = "#C4B49A"}>可預約</div>}
           </td>
@@ -858,17 +867,22 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
 /* ═══════════════════════════════════════════ Admin Lookup ═══════════════════════════════════════════ */
 function AdminLookup({ appts, luAppts, onApptClick, onLuApptClick }) {
   const [query, setQuery] = useState("");
-  const [mode, setMode] = useState("bday"); // "id" | "bday"
+  const [mode, setMode] = useState("bday"); // "id" | "bday" | "chart"
   const q = query.trim().toUpperCase();
   const qRaw = query.trim();
 
   const results = useMemo(() => {
-    if (qRaw.length < 2) return [];
+    if (qRaw.length < 1) return [];
     if (mode === "id") {
       const mainR = appts.filter(a => a.idNum && a.idNum.toUpperCase() === q).map(a => ({ ...a, sys: "main" }));
       const luR = luAppts.filter(a => a.idNum && a.idNum.toUpperCase() === q).map(a => ({ ...a, sys: "lu" }));
       return [...mainR, ...luR].sort(sortByDateTime);
+    } else if (mode === "chart") {
+      const mainR = appts.filter(a => a.chartNum && a.chartNum.toString() === qRaw).map(a => ({ ...a, sys: "main" }));
+      const luR = luAppts.filter(a => a.chartNum && a.chartNum.toString() === qRaw).map(a => ({ ...a, sys: "lu" }));
+      return [...mainR, ...luR].sort(sortByDateTime);
     } else {
+      if (qRaw.length < 2) return [];
       const mainR = appts.filter(a => a.birthday && a.birthday === qRaw).map(a => ({ ...a, sys: "main" }));
       const luR = luAppts.filter(a => a.birthday && a.birthday === qRaw).map(a => ({ ...a, sys: "lu" }));
       return [...mainR, ...luR].sort(sortByDateTime);
@@ -910,15 +924,15 @@ function AdminLookup({ appts, luAppts, onApptClick, onLuApptClick }) {
   return (
     <div>
       <div style={{ display: "flex", gap: 6, marginBottom: 12, alignItems: "center", flexWrap: "wrap" }}>
-        {[{ k: "id", l: "🪪 身分證字號" }, { k: "bday", l: "🎂 生日（民國六碼）" }].map(m => (
+        {[{ k: "bday", l: "🎂 生日" }, { k: "chart", l: "📋 病歷號" }, { k: "id", l: "🪪 身分證" }].map(m => (
           <button key={m.k} onClick={() => { setMode(m.k); setQuery(""); }}
             style={{ padding: "7px 14px", borderRadius: 7, border: mode === m.k ? "2px solid #C2563A" : "1.5px solid #D4C5A9", background: mode === m.k ? "#FFF0EB" : "#FFFDF5", color: mode === m.k ? "#C2563A" : "#5A4A3A", fontWeight: mode === m.k ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>{m.l}</button>
         ))}
       </div>
       <input value={query}
-        onChange={e => setQuery(mode === "id" ? e.target.value.toUpperCase() : e.target.value.replace(/\D/g, "").slice(0, 6))}
-        placeholder={mode === "id" ? "輸入身分證字號（完整）" : "輸入民國年月日，如 800515"}
-        maxLength={mode === "id" ? 10 : 6}
+        onChange={e => setQuery(mode === "id" ? e.target.value.toUpperCase() : mode === "bday" ? e.target.value.replace(/\D/g, "").slice(0, 6) : e.target.value)}
+        placeholder={mode === "id" ? "輸入身分證字號（完整）" : mode === "chart" ? "輸入病歷號" : "輸入民國年月日，如 800515"}
+        maxLength={mode === "id" ? 10 : mode === "bday" ? 6 : 20}
         style={{ width: "100%", padding: "11px 16px", borderRadius: 9, border: "1.5px solid #D4C5A9", fontSize: 16, background: "#FFFDF5", fontFamily: "'Noto Sans TC', sans-serif", boxSizing: "border-box", outline: "none", letterSpacing: mode === "id" ? 2 : 0, marginBottom: 12 }} />
 
       {qRaw.length >= 2 && results.length === 0 && (
@@ -1642,7 +1656,7 @@ export default function App() {
 
       {/* ── ADMIN ── */}
       {isAdmin && adminTab === "schedule" && (<><NavCtrl selDate={selDate} setSelDate={setSelDate} viewMode={adminView} setViewMode={setAdminView} showDayView={true} /><ThFilterBar filterTh={filterTh} setFilterTh={setFilterTh} /><div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10, padding: "5px 12px", background: "#FFFDF5", borderRadius: 7, border: "1px solid #E0D5C1", fontSize: 13, alignItems: "center" }}>{THERAPISTS.map(t => (<span key={t.id} style={{ display: "flex", alignItems: "center", gap: 3 }}><span style={{ display: "inline-flex", width: 14, height: 14, borderRadius: "50%", background: t.color, color: "white", fontSize: 8, fontWeight: 700, alignItems: "center", justifyContent: "center" }}>{t.id}</span><span>{t.name}</span></span>))}<span style={{ borderLeft: "1px solid #D4C5A9", paddingLeft: 8, display: "flex", gap: 6 }}><span style={{ color: "#2E7D6F", fontWeight: 600 }}>■班內</span><span style={{ color: "#C2563A", fontWeight: 600 }}>┈班外</span><span style={{ color: "#FFD700", fontWeight: 600 }}>▮已報到</span></span></div>
-        {adminView === "day" ? <AdminDayView appts={appts} selDate={selDate} onCellClick={(d, t) => setBookingModal({ date: d, time: t })} onApptClick={a => setAdminDetailModal(a)} mainSlotCfg={mainSlotCfg} setMainSlotCfg={fireSetMainSlotCfg} /> : <AdminWeekGrid appts={appts} selDate={selDate} onCellClick={(d, t) => setBookingModal({ date: d, time: t })} onApptClick={a => setAdminDetailModal(a)} filterTh={filterTh} cs={cs} />}</>)}
+        {adminView === "day" ? <AdminDayView appts={appts} selDate={selDate} onCellClick={(d, t) => setBookingModal({ date: d, time: t })} onApptClick={a => setAdminDetailModal(a)} mainSlotCfg={mainSlotCfg} setMainSlotCfg={fireSetMainSlotCfg} /> : <AdminWeekGrid appts={appts} selDate={selDate} onCellClick={(d, t) => setBookingModal({ date: d, time: t })} onApptClick={a => setAdminDetailModal(a)} filterTh={filterTh} cs={cs} mainSlotCfg={mainSlotCfg} />}</>)}
 
       {isAdmin && adminTab === "lu" && (<><NavCtrl selDate={selDate} setSelDate={setSelDate} viewMode={luAdminView} setViewMode={setLuAdminView} showDayView={true} />
         {luAdminView === "day" ? <LuAdminDayView appts={luAppts} selDate={selDate} onCellClick={(d, t) => setLuBookingModal({ date: d, time: t })} onApptClick={a => setLuDetailModal(a)} luSlotCfg={luSlotCfg} setLuSlotCfg={fireSetLuSlotCfg} />
