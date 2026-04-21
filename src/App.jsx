@@ -840,11 +840,11 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
       <div style={{ position: "fixed", inset: 0, zIndex: 1200, background: "white", overflowY: "auto" }}>
         <style>{`
           @media print {
-            body > * { display: none !important; }
-            #print-root { display: block !important; }
+            body * { visibility: hidden !important; }
+            #print-root, #print-root * { visibility: visible !important; }
+            #print-root { position: absolute !important; top: 0; left: 0; width: 100%; filter: grayscale(100%); }
             .no-print { display: none !important; }
             @page { size: A4 portrait; margin: 8mm 10mm; }
-            #print-root { filter: grayscale(100%); }
           }
         `}</style>
         <div id="print-root" style={{ padding: "16px 20px", maxWidth: 780, margin: "0 auto" }}>
