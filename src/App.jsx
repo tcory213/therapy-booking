@@ -781,17 +781,24 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
       const k = `${ds}-${time}`;
       const closed = satAft ? mainSlotCfg[k] !== true : mainSlotCfg[k] === false;
       const starts = dayA.filter(a => a.time === time);
+      // Continuations: appointments that started earlier but cover this slot
+      const conts = dayA.filter(a => a.time !== time && toM(a.time) < toM(time) && toM(time) < toM(a.time) + a.duration);
       if (starts.length > 0) {
         starts.forEach(a => {
           const th = TH_MAP[a.therapist] || TH_MAP["X"];
-          rows.push({ time, thLabel: thLabel(th), color: th.color, patient: a.patient, chartNum: a.chartNum, birthday: a.birthday, duration: a.duration, ttLabel: getApptTreatLabel(a), type: "appt" });
+          rows.push({ time, thLabel: thLabel(th), color: th.color, patient: a.patient, chartNum: a.chartNum, birthday: a.birthday, duration: a.duration, ttLabel: getApptTreatLabel(a), type: "appt", isCont: false });
+        });
+      } else if (conts.length > 0) {
+        conts.forEach(a => {
+          const th = TH_MAP[a.therapist] || TH_MAP["X"];
+          rows.push({ time, thLabel: thLabel(th), color: th.color, patient: a.patient, chartNum: a.chartNum, birthday: a.birthday, duration: a.duration, ttLabel: getApptTreatLabel(a), type: "appt", isCont: true });
         });
       } else {
         rows.push({ time, type: closed ? "closed" : "empty" });
       }
     });
     return { dateLabel, rows };
-  }, [selDate, dayA]);
+  }, [selDate, dayA, mainSlotCfg, ds]);
   return (<div>
     <div style={{ display: "flex", gap: 12, marginBottom: 10, padding: "8px 14px", background: "#FFFDF5", borderRadius: 7, border: "1px solid #E0D5C1", fontSize: 14, color: "#5A4A3A", flexWrap: "wrap", alignItems: "center" }}>
       <span>預約：<strong>{stats.t}</strong></span><span>時數：<strong>{stats.m}</strong>分</span><span style={{ color: "#2E7D6F" }}>班內：<strong>{stats.on}</strong></span><span style={{ color: "#C2563A" }}>班外：<strong>{stats.off}</strong></span><span style={{ color: "#5B6ABF" }}>自轉：<strong>{stats.sr}</strong></span>
@@ -801,10 +808,8 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
       {SLOTS.map(time => { const isH = time.endsWith(":00"); const isBr = time === "14:00"; const starts = getStarts(time); const all = getAllAt(time); const occ = all.length > 0;
         const satAft = isSatAft(selDate, time);
         const k = `${ds}-${time}`;
-        // Normal: closed when mainSlotCfg[k]===false. SatAft: closed unless explicitly opened (true)
         const closed = satAft ? mainSlotCfg[k] !== true : mainSlotCfg[k] === false;
         const toggleLabel = satAft ? (mainSlotCfg[k] === true ? "開" : "關") : (mainSlotCfg[k] === false ? "關" : "開");
-        // Helper: render one appt row (used for both starts and continuations)
         const renderApptRow = (aa, isCont) => { const th = TH_MAP[aa.therapist] || TH_MAP["X"]; return (
           <div key={aa.id} onClick={() => onApptClick(aa)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", cursor: "pointer", borderLeft: aa.checkedIn ? "3px solid #FFD700" : isCont ? `3px solid ${th.color}50` : "3px solid transparent", background: isCont ? `${th.color}07` : "transparent" }}>
             <div style={{ width: 22, height: 22, borderRadius: "50%", background: isCont ? `${th.color}90` : th.color, flexShrink: 0, color: "white", fontWeight: 700, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>{thLabel(th)}</div>
@@ -821,9 +826,7 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
           </div>); };
         return (<tr key={time} style={{ cursor: "pointer", ...(isBr ? { borderTop: "3px solid #C2563A" } : {}) }}><td onClick={() => onCellClick(selDate, time)} style={{ padding: "3px 8px", textAlign: "center", background: isH ? "#F0E8D8" : "#F8F2E6", borderRight: "2px solid #D4C5A9", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", fontWeight: isH ? 700 : 400, color: isH ? "#3D2B1F" : "#8B7355", height: 30 }}>{time}</td>
           <td style={{ padding: 0, minHeight: 30, borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", background: closed ? "#2A2A2A" : "#FFFDF5" }}>
-            {/* Starts at this time */}
             {starts.map(as => renderApptRow(as, false))}
-            {/* Continuations: occupying this slot but started earlier */}
             {all.filter(aa => aa.time !== time).map(aa => renderApptRow(aa, true))}
             {!occ && closed && <div style={{ padding: "0 10px", height: 30, display: "flex", alignItems: "center", fontSize: 13, color: "rgba(255,255,255,0.5)" }}>已關閉</div>}
             {!occ && !closed && <div onClick={() => onCellClick(selDate, time)} style={{ padding: "0 10px", height: 30, display: "flex", alignItems: "center", fontSize: 13, color: "#C4B49A", cursor: "pointer" }}
@@ -834,56 +837,61 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
           </td>
         </tr>); })}</tbody></table></div>
     {showPrint && (
-      <div style={{ position: "fixed", inset: 0, zIndex: 1200, background: "white", overflowY: "auto", padding: 24 }}>
+      <div style={{ position: "fixed", inset: 0, zIndex: 1200, background: "white", overflowY: "auto" }}>
         <style>{`
           @media print {
-            body * { visibility: hidden !important; }
-            .print-overlay, .print-overlay * { visibility: visible !important; }
-            .print-overlay { position: fixed !important; left: 0; top: 0; right: 0; bottom: 0; overflow: visible !important; padding: 8mm 10mm; box-sizing: border-box; }
+            body > * { display: none !important; }
+            #print-root { display: block !important; }
             .no-print { display: none !important; }
-            @page { size: A4 portrait; margin: 0; }
+            @page { size: A4 portrait; margin: 8mm 10mm; }
+            #print-root { filter: grayscale(100%); }
           }
         `}</style>
-        <div className="print-overlay">
-          <div className="no-print" style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+        <div id="print-root" style={{ padding: "16px 20px", maxWidth: 780, margin: "0 auto" }}>
+          <div className="no-print" style={{ display: "flex", gap: 10, marginBottom: 16 }}>
             <button onClick={() => window.print()} style={{ padding: "10px 28px", borderRadius: 8, border: "none", background: "#3D2B1F", color: "white", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>🖨️ 列印此頁</button>
             <button onClick={() => setShowPrint(false)} style={{ padding: "10px 20px", borderRadius: 8, border: "1.5px solid #D4C5A9", background: "white", color: "#5A4A3A", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>✕ 關閉</button>
           </div>
           {/* Header */}
-          <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 4 }}>
-            <div style={{ fontSize: 15, fontWeight: 700, fontFamily: "'Noto Sans TC', sans-serif", color: "#1A1A1A" }}>徒手治療預約 — 日報表</div>
-            <div style={{ fontSize: 11, color: "#555" }}>{printContent.dateLabel}</div>
-            <div style={{ fontSize: 11, color: "#555", marginLeft: "auto" }}>預約 {stats.t} 筆・{stats.m} 分</div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 14, marginBottom: 6 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, fontFamily: "'Noto Sans TC', sans-serif", color: "#1A1A1A" }}>徒手治療預約 — 日報表</div>
+            <div style={{ fontSize: 13, color: "#444" }}>{printContent.dateLabel}</div>
+            <div style={{ fontSize: 13, color: "#444", marginLeft: "auto" }}>預約 {stats.t} 筆・{stats.m} 分</div>
           </div>
           {/* Compact table */}
-          <table style={{ borderCollapse: "collapse", width: "100%", fontFamily: "'Noto Sans TC', sans-serif", fontSize: 10, tableLayout: "fixed" }}>
+          <table style={{ borderCollapse: "collapse", width: "100%", fontFamily: "'Noto Sans TC', sans-serif", fontSize: 12, tableLayout: "fixed" }}>
             <colgroup>
-              <col style={{ width: "13%" }} />
-              <col style={{ width: "87%" }} />
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "88%" }} />
             </colgroup>
             <tbody>
               {printContent.rows.map((r, i) => {
                 const isH = r.time.endsWith(":00");
                 const isBr = r.time === "14:00";
-                const rowH = r.type === "appt" ? "auto" : "16px";
                 const bg = r.type === "closed" ? "#1A1A1A" : "white";
-                const bdTop = isBr ? "2px solid #C2563A" : isH ? "1px solid #888" : "1px solid #ddd";
+                const rowH = r.type === "appt" ? "auto" : "18px";
+                const bdTop = isBr ? "2.5px solid #555" : isH ? "1px solid #888" : "1px solid #ddd";
                 return (
                   <tr key={i} style={{ borderTop: bdTop }}>
-                    <td style={{ padding: "1px 4px", textAlign: "center", fontWeight: isH ? 700 : 400, color: r.type === "closed" ? "rgba(255,255,255,0.5)" : isH ? "#222" : "#666", fontSize: isH ? 10 : 9, background: r.type === "closed" ? "#1A1A1A" : isH ? "#F5F0E5" : "white", borderRight: "1px solid #ccc", whiteSpace: "nowrap", height: rowH }}>
+                    <td style={{ padding: "1px 4px", textAlign: "center", fontWeight: isH ? 700 : 400, color: r.type === "closed" ? "rgba(255,255,255,0.5)" : isH ? "#111" : "#555", fontSize: isH ? 12 : 11, background: r.type === "closed" ? "#1A1A1A" : isH ? "#EDEAD8" : "white", borderRight: "1px solid #bbb", whiteSpace: "nowrap", height: rowH }}>
                       {r.time}
                     </td>
-                    <td style={{ padding: r.type === "appt" ? "2px 6px" : "1px 6px", background: bg, height: rowH, verticalAlign: "middle" }}>
+                    <td style={{ padding: r.type === "appt" ? "2px 8px" : "1px 6px", background: bg, height: rowH, verticalAlign: "middle" }}>
                       {r.type === "appt" && (
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                          <span style={{ display: "inline-block", width: 14, height: 14, borderRadius: "50%", background: r.color, color: "white", textAlign: "center", lineHeight: "14px", fontSize: 8, fontWeight: 700, flexShrink: 0 }}>{r.thLabel}</span>
-                          <strong style={{ fontSize: 10 }}>{r.patient}</strong>
-                          <span style={{ color: "#666", fontSize: 9 }}>{r.chartNum ? `#${r.chartNum}` : r.birthday}</span>
-                          <span style={{ fontSize: 9, color: "#555" }}>{r.duration}分</span>
-                          <span style={{ fontSize: 9, color: "#444", background: "#eee", padding: "0 3px", borderRadius: 2 }}>{r.ttLabel}</span>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ display: "inline-block", width: 16, height: 16, borderRadius: "50%", background: r.color, color: "white", textAlign: "center", lineHeight: "16px", fontSize: 10, fontWeight: 700, flexShrink: 0 }}>{r.thLabel}</span>
+                          <strong style={{ fontSize: 12 }}>{r.patient}</strong>
+                          {r.isCont
+                            ? <span style={{ fontSize: 11, color: "#888" }}>（續）</span>
+                            : <>
+                                <span style={{ color: "#555", fontSize: 11 }}>{r.chartNum ? `#${r.chartNum}` : r.birthday}</span>
+                                <span style={{ fontSize: 11, color: "#444" }}>{r.duration}分</span>
+                                <span style={{ fontSize: 11, color: "#333", background: "#eee", padding: "0 4px", borderRadius: 2 }}>{r.ttLabel}</span>
+                              </>
+                          }
                         </span>
                       )}
-                      {r.type === "closed" && <span style={{ fontSize: 9, color: "rgba(255,255,255,0.4)" }}>未開放</span>}
+                      {r.type === "closed" && <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>未開放</span>}
                     </td>
                   </tr>
                 );
