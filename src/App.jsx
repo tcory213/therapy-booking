@@ -767,7 +767,7 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
   const [showPrint, setShowPrint] = useState(false);
   const printContent = useMemo(() => {
     const dateLabel = `${selDate.getFullYear()}/${selDate.getMonth() + 1}/${selDate.getDate()} ${WDAY[(selDate.getDay() + 6) % 7]}`;
-    const rows = []; SLOTS.forEach(time => { const starts = dayA.filter(a => a.time === time); starts.forEach(a => { const th = TH_MAP[a.therapist] || TH_MAP["X"]; const tid = th.id === "X" ? "?" : th.id; const ttLabel = getApptTreatLabel(a); rows.push({ time: a.time, tid, color: th.color, patient: a.patient, birthday: a.birthday, duration: a.duration, ttLabel, onDuty: a.onDuty, selfRef: a.selfRef }); }); });
+    const rows = []; SLOTS.forEach(time => { const starts = dayA.filter(a => a.time === time); starts.forEach(a => { const th = TH_MAP[a.therapist] || TH_MAP["X"]; const tid = th.id === "X" ? "?" : th.id; const ttLabel = getApptTreatLabel(a); rows.push({ time: a.time, tid, color: th.color, patient: a.patient, chartNum: a.chartNum, birthday: a.birthday, duration: a.duration, ttLabel, onDuty: a.onDuty, selfRef: a.selfRef }); }); });
     return { dateLabel, rows };
   }, [selDate, dayA]);
   return (<div>
@@ -790,7 +790,7 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
             {isCont && <span style={{ fontSize: 10, color: "#B5A898", flexShrink: 0 }}>（續）</span>}
             {!isCont && aa.note && <span style={{ color: "#8B7355", fontSize: 12, maxWidth: 80, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>({aa.note})</span>}
             {!isCont && aa.reconfirm && <span style={{ fontSize: 12, fontWeight: 700, color: "#2E7D6F" }}>✓再確認</span>}
-            <span style={{ color: "#8B7355", fontSize: 12 }}>{aa.birthday}</span>
+            <span style={{ color: "#8B7355", fontSize: 12 }}>{aa.chartNum ? `#${aa.chartNum}` : aa.birthday}</span>
             <span style={{ color: "#8B7355", fontSize: 12 }}>{aa.duration}分</span>
             <span style={{ fontSize: 12, fontWeight: 600, padding: "1px 5px", borderRadius: 3, background: "#F5F0E5", color: "#5A4A3A" }}>{getApptTreatLabel(aa)}</span>
             <span style={{ fontSize: 12, fontWeight: 600, padding: "1px 5px", borderRadius: 3, background: aa.onDuty ? "#E6F5EE" : "#FFF0EB", color: aa.onDuty ? "#2E7D6F" : "#C2563A" }}>{aa.onDuty ? "班內" : "班外"}</span>
@@ -839,7 +839,7 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
                 <td style={{ padding: "6px 10px", border: "1px solid #ccc" }}>
                   <span style={{ display: "inline-block", width: 20, height: 20, borderRadius: "50%", background: r.color, color: "white", textAlign: "center", lineHeight: "20px", fontSize: 11, fontWeight: 700, marginRight: 8 }}>{r.tid}</span>
                   <strong>{r.patient}</strong>
-                  <span style={{ color: "#888", marginLeft: 10 }}>{r.birthday}</span>
+                  <span style={{ color: "#888", marginLeft: 10 }}>{r.chartNum ? `#${r.chartNum}` : r.birthday}</span>
                   <span style={{ marginLeft: 10 }}>{r.duration}分</span>
                   <span style={{ marginLeft: 10, padding: "2px 6px", borderRadius: 3, fontSize: 11, background: "#f5f0e5" }}>{r.ttLabel}</span>
                   <span style={{ marginLeft: 6, padding: "2px 6px", borderRadius: 3, fontSize: 11, background: r.onDuty ? "#e6f5ee" : "#fff0eb", color: r.onDuty ? "#2E7D6F" : "#C2563A" }}>{r.onDuty ? "班內" : "班外"}</span>
@@ -892,7 +892,7 @@ function AdminLookup({ appts, luAppts, onApptClick, onLuApptClick }) {
         onMouseLeave={e => e.currentTarget.style.background = isPast ? "#F8F4EE" : "#FFFDF5"}>
         <div style={{ width: 24, height: 24, borderRadius: "50%", background: color, color: "white", fontWeight: 700, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{isLu ? "盧" : (thObj.id === "X" ? "?" : thObj.id)}</div>
         <div>
-          <div style={{ fontWeight: 700, color: "#3D2B1F" }}>{a.patient} <span style={{ fontWeight: 400, fontSize: 11, color: "#8B7355" }}>生日：{a.birthday}</span></div>
+          <div style={{ fontWeight: 700, color: "#3D2B1F" }}>{a.patient} <span style={{ fontWeight: 400, fontSize: 11, color: "#8B7355" }}>{a.chartNum ? `#${a.chartNum}` : `生日：${a.birthday}`}</span></div>
           <div style={{ fontSize: 11, color: "#8B7355" }}>{isLu ? "盧獨立時段" : thObj.name} · {isLu ? "班外" : (a.onDuty ? "班內" : "班外")} · {a.selfRef ? "自轉" : "非自轉"}</div>
         </div>
         <span style={{ fontSize: 12, color: "#3D2B1F", whiteSpace: "nowrap" }}>{a.date}</span>
@@ -974,7 +974,7 @@ function LuAdminDayView({ appts, selDate, onCellClick, onApptClick, luSlotCfg, s
         return (<tr key={time} style={{ cursor: "pointer" }}><td style={{ padding: "3px 8px", textAlign: "center", background: isH ? "#E8F5F0" : "#F2FAF7", borderRight: `2px solid ${LU_COLOR}30`, borderTop: isH ? `1px solid ${LU_COLOR}30` : "1px solid #E0EDE8", fontWeight: isH ? 700 : 400, color: isH ? LU_COLOR : "#6BA898", height: 30 }}>{time}</td>
           <td onClick={() => occ ? onApptClick(aa) : !closed && onCellClick(selDate, time)} style={{ padding: 0, height: 30, borderTop: isH ? `1px solid ${LU_COLOR}30` : "1px solid #E0EDE8", background: closed ? "#F5F0E5" : occ ? `${LU_COLOR}10` : "#F8FDFB" }}
             onMouseEnter={e => { if (!occ && !closed) e.currentTarget.style.background = "#DDF0E8"; }} onMouseLeave={e => { if (!occ && !closed) e.currentTarget.style.background = "#F8FDFB"; }}>
-            {as && <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 10px", height: "100%", borderLeft: as.checkedIn ? "3px solid #FFD700" : "3px solid transparent" }}><div style={{ width: 20, height: 20, borderRadius: "50%", background: LU_COLOR, flexShrink: 0, color: "white", fontWeight: 700, fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center" }}>盧</div><span style={{ fontWeight: 700, color: "#3D2B1F" }}>{as.patient}</span><span style={{ color: "#8B7355", fontSize: 10 }}>{as.birthday}</span><span style={{ color: "#8B7355", fontSize: 10 }}>{as.duration}分</span>{as.checkedIn && <span style={{ fontSize: 9, fontWeight: 700, color: "#FFD700" }}>✓到</span>}</div>}
+            {as && <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 10px", height: "100%", borderLeft: as.checkedIn ? "3px solid #FFD700" : "3px solid transparent" }}><div style={{ width: 20, height: 20, borderRadius: "50%", background: LU_COLOR, flexShrink: 0, color: "white", fontWeight: 700, fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center" }}>盧</div><span style={{ fontWeight: 700, color: "#3D2B1F" }}>{as.patient}</span><span style={{ color: "#8B7355", fontSize: 10 }}>{as.chartNum ? `#${as.chartNum}` : as.birthday}</span><span style={{ color: "#8B7355", fontSize: 10 }}>{as.duration}分</span>{as.checkedIn && <span style={{ fontSize: 9, fontWeight: 700, color: "#FFD700" }}>✓到</span>}</div>}
             {occ && !as && <div style={{ padding: "0 10px", height: "100%", display: "flex", alignItems: "center" }}><span style={{ fontSize: 9, color: `${LU_COLOR}88` }}>{aa.patient} 治療中</span></div>}
             {!occ && closed && <div style={{ padding: "0 10px", height: "100%", display: "flex", alignItems: "center", fontSize: 13, color: "#B5A898" }}>已關閉</div>}
             {!occ && !closed && <div style={{ padding: "0 10px", height: "100%", display: "flex", alignItems: "center", fontSize: 13, color: "#88CCB8" }}>可預約</div>}
