@@ -758,7 +758,7 @@ function AdminWeekGrid({ appts, selDate, onCellClick, onApptClick, filterTh, cs,
   </table></div>);
 }
 
-function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, setMainSlotCfg }) {
+function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainSlotCfg, setMainSlotCfg, luSlotCfg }) {
   const ds = fd(selDate); const dayA = useMemo(() => appts.filter(a => a.date === ds), [appts, ds]);
   const getStarts = useCallback(time => dayA.filter(a => a.time === time), [dayA]);
   const getAllAt = useCallback(time => { const m = toM(time); return dayA.filter(a => m >= toM(a.time) && m < toM(a.time) + a.duration); }, [dayA]);
@@ -781,7 +781,6 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
       const k = `${ds}-${time}`;
       const closed = satAft ? mainSlotCfg[k] !== true : mainSlotCfg[k] === false;
       const starts = dayA.filter(a => a.time === time);
-      // Continuations: appointments that started earlier but cover this slot
       const conts = dayA.filter(a => a.time !== time && toM(a.time) < toM(time) && toM(time) < toM(a.time) + a.duration);
       if (starts.length > 0) {
         starts.forEach(a => {
@@ -797,8 +796,27 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
         rows.push({ time, type: closed ? "closed" : "empty" });
       }
     });
-    return { dateLabel, rows };
-  }, [selDate, dayA, mainSlotCfg, ds]);
+    // Lu rows: only afternoon slots (14:00+) with same structure
+    const luDayA = luAppts ? luAppts.filter(a => a.date === ds) : [];
+    const luRows = [];
+    LU_SLOTS.forEach(time => {
+      const luClosed = isLuSlotClosed(ds, time, luSlotCfg || {});
+      const starts = luDayA.filter(a => a.time === time);
+      const conts = luDayA.filter(a => a.time !== time && toM(a.time) < toM(time) && toM(time) < toM(a.time) + a.duration);
+      if (starts.length > 0) {
+        starts.forEach(a => {
+          luRows.push({ time, patient: a.patient, chartNum: a.chartNum, birthday: a.birthday, duration: a.duration, type: "appt", isCont: false });
+        });
+      } else if (conts.length > 0) {
+        conts.forEach(a => {
+          luRows.push({ time, patient: a.patient, chartNum: a.chartNum, birthday: a.birthday, duration: a.duration, type: "appt", isCont: true });
+        });
+      } else {
+        luRows.push({ time, type: luClosed ? "closed" : "empty" });
+      }
+    });
+    return { dateLabel, rows, luRows };
+  }, [selDate, dayA, mainSlotCfg, ds, luAppts, luSlotCfg]);
   return (<div>
     <div style={{ display: "flex", gap: 12, marginBottom: 10, padding: "8px 14px", background: "#FFFDF5", borderRadius: 7, border: "1px solid #E0D5C1", fontSize: 14, color: "#5A4A3A", flexWrap: "wrap", alignItems: "center" }}>
       <span>預約：<strong>{stats.t}</strong></span><span>時數：<strong>{stats.m}</strong>分</span><span style={{ color: "#2E7D6F" }}>班內：<strong>{stats.on}</strong></span><span style={{ color: "#C2563A" }}>班外：<strong>{stats.off}</strong></span><span style={{ color: "#5B6ABF" }}>自轉：<strong>{stats.sr}</strong></span>
@@ -866,46 +884,83 @@ function AdminDayView({ appts, selDate, onApptClick, onCellClick, mainSlotCfg, s
             <div style={{ fontSize: 13, color: "#444" }}>{printContent.dateLabel}</div>
             <div style={{ fontSize: 13, color: "#444", marginLeft: "auto" }}>預約 {stats.t} 筆・{stats.m} 分</div>
           </div>
-          {/* Compact table */}
-          <table style={{ borderCollapse: "collapse", width: "100%", fontFamily: "'Noto Sans TC', sans-serif", fontSize: 12, tableLayout: "fixed" }}>
-            <colgroup>
-              <col style={{ width: "12%" }} />
-              <col style={{ width: "88%" }} />
-            </colgroup>
-            <tbody>
-              {printContent.rows.map((r, i) => {
-                const isH = r.time.endsWith(":00");
-                const isBr = r.time === "14:00";
-                const bg = r.type === "closed" ? "#1A1A1A" : "white";
-                const rowH = r.type === "appt" ? "auto" : "18px";
-                const bdTop = isBr ? "2.5px solid #555" : isH ? "1px solid #888" : "1px solid #ddd";
-                return (
-                  <tr key={i} style={{ borderTop: bdTop }}>
-                    <td style={{ padding: "1px 4px", textAlign: "center", fontWeight: isH ? 700 : 400, color: r.type === "closed" ? "rgba(255,255,255,0.5)" : isH ? "#111" : "#555", fontSize: isH ? 12 : 11, background: r.type === "closed" ? "#1A1A1A" : isH ? "#EDEAD8" : "white", borderRight: "1px solid #bbb", whiteSpace: "nowrap", height: rowH }}>
-                      {r.time}
-                    </td>
-                    <td style={{ padding: r.type === "appt" ? "2px 8px" : "1px 6px", background: bg, height: rowH, verticalAlign: "middle" }}>
-                      {r.type === "appt" && (
-                        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                          <span style={{ display: "inline-block", width: 16, height: 16, borderRadius: "50%", background: r.color, color: "white", textAlign: "center", lineHeight: "16px", fontSize: 10, fontWeight: 700, flexShrink: 0 }}>{r.thLabel}</span>
-                          <strong style={{ fontSize: 12 }}>{r.patient}</strong>
-                          {r.isCont
-                            ? <span style={{ fontSize: 11, color: "#888" }}>（續）</span>
-                            : <>
+          {/* Two-column print layout */}
+          <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+            {/* LEFT: Main schedule */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#555", marginBottom: 3, borderBottom: "1px solid #ccc", paddingBottom: 2 }}>一般預約</div>
+              <table style={{ borderCollapse: "collapse", width: "100%", fontFamily: "'Noto Sans TC', sans-serif", fontSize: 12, tableLayout: "fixed" }}>
+                <colgroup><col style={{ width: "16%" }} /><col style={{ width: "84%" }} /></colgroup>
+                <tbody>
+                  {printContent.rows.map((r, i) => {
+                    const isH = r.time.endsWith(":00");
+                    const isBr = r.time === "14:00";
+                    const bg = r.type === "closed" ? "#1A1A1A" : "white";
+                    const rowH = r.type === "appt" ? "auto" : "18px";
+                    const bdTop = isBr ? "2.5px solid #555" : isH ? "1px solid #888" : "1px solid #ddd";
+                    return (
+                      <tr key={i} style={{ borderTop: bdTop }}>
+                        <td style={{ padding: "1px 4px", textAlign: "center", fontWeight: isH ? 700 : 400, color: r.type === "closed" ? "rgba(255,255,255,0.5)" : isH ? "#111" : "#555", fontSize: isH ? 12 : 11, background: r.type === "closed" ? "#1A1A1A" : isH ? "#EDEAD8" : "white", borderRight: "1px solid #bbb", whiteSpace: "nowrap", height: rowH }}>{r.time}</td>
+                        <td style={{ padding: r.type === "appt" ? "2px 6px" : "1px 6px", background: bg, height: rowH, verticalAlign: "middle" }}>
+                          {r.type === "appt" && (
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                              <span style={{ display: "inline-block", width: 16, height: 16, borderRadius: "50%", background: r.color, color: "white", textAlign: "center", lineHeight: "16px", fontSize: 10, fontWeight: 700, flexShrink: 0 }}>{r.thLabel}</span>
+                              <strong style={{ fontSize: 12 }}>{r.patient}</strong>
+                              {r.isCont ? <span style={{ fontSize: 11, color: "#888" }}>（續）</span> : <>
                                 <span style={{ color: "#555", fontSize: 11 }}>{r.chartNum ? `#${r.chartNum}` : r.birthday}</span>
                                 <span style={{ fontSize: 11, color: "#444" }}>{r.duration}分</span>
-                                <span style={{ fontSize: 11, color: "#333", background: "#eee", padding: "0 4px", borderRadius: 2 }}>{r.ttLabel}</span>
-                              </>
-                          }
-                        </span>
-                      )}
-                      {r.type === "closed" && <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>未開放</span>}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                                <span style={{ fontSize: 11, color: "#333", background: "#eee", padding: "0 3px", borderRadius: 2 }}>{r.ttLabel}</span>
+                              </>}
+                            </span>
+                          )}
+                          {r.type === "closed" && <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>未開放</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {/* RIGHT: Lu schedule, aligned from 14:00 */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: LU_COLOR, marginBottom: 3, borderBottom: `1px solid ${LU_COLOR}`, paddingBottom: 2 }}>盧獨立時段（14:00 – 20:45）</div>
+              {/* Top spacer: rows before 14:00 in main = 8:30~11:45 = morning slots = toM(14:00)-toM(8:30) / 15 rows = 22 rows + any appt rows */}
+              {(() => {
+                const morningRows = printContent.rows.filter(r => toM(r.time) < toM("14:00"));
+                const spacerH = morningRows.length * 18;
+                return <div style={{ height: spacerH }} />;
+              })()}
+              <table style={{ borderCollapse: "collapse", width: "100%", fontFamily: "'Noto Sans TC', sans-serif", fontSize: 12, tableLayout: "fixed" }}>
+                <colgroup><col style={{ width: "16%" }} /><col style={{ width: "84%" }} /></colgroup>
+                <tbody>
+                  {printContent.luRows.map((r, i) => {
+                    const isH = r.time.endsWith(":00");
+                    const bg = r.type === "closed" ? "#1A1A1A" : "white";
+                    const rowH = r.type === "appt" ? "auto" : "18px";
+                    const bdTop = isH ? "1px solid #888" : "1px solid #ddd";
+                    return (
+                      <tr key={i} style={{ borderTop: bdTop }}>
+                        <td style={{ padding: "1px 4px", textAlign: "center", fontWeight: isH ? 700 : 400, color: r.type === "closed" ? "rgba(255,255,255,0.5)" : isH ? LU_COLOR : "#555", fontSize: isH ? 12 : 11, background: r.type === "closed" ? "#1A1A1A" : isH ? "#E8F5F0" : "white", borderRight: `1px solid ${LU_COLOR}60`, whiteSpace: "nowrap", height: rowH }}>{r.time}</td>
+                        <td style={{ padding: r.type === "appt" ? "2px 6px" : "1px 6px", background: bg, height: rowH, verticalAlign: "middle" }}>
+                          {r.type === "appt" && (
+                            <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                              <span style={{ display: "inline-block", width: 16, height: 16, borderRadius: "50%", background: LU_COLOR, color: "white", textAlign: "center", lineHeight: "16px", fontSize: 10, fontWeight: 700, flexShrink: 0 }}>盧</span>
+                              <strong style={{ fontSize: 12 }}>{r.patient}</strong>
+                              {r.isCont ? <span style={{ fontSize: 11, color: "#888" }}>（續）</span> : <>
+                                <span style={{ color: "#555", fontSize: 11 }}>{r.chartNum ? `#${r.chartNum}` : r.birthday}</span>
+                                <span style={{ fontSize: 11, color: "#444" }}>{r.duration}分</span>
+                              </>}
+                            </span>
+                          )}
+                          {r.type === "closed" && <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>未開放</span>}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
     )}
@@ -1692,7 +1747,7 @@ export default function App() {
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;600;700&family=Noto+Serif+TC:wght@400;700&display=swap" rel="stylesheet" />
     <header style={{ background: "linear-gradient(135deg, #3D2B1F, #5A3A2A)", padding: "10px 18px", boxShadow: "0 4px 20px rgba(0,0,0,0.15)" }}>
       <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}><div style={{ width: 32, height: 32, borderRadius: 7, background: "#C2563A", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🤲</div><h1 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#F5EDDC", fontFamily: "'Noto Serif TC', serif", letterSpacing: 1 }}>徒手治療預約{isAdmin && " — 後台"}</h1></div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}><div style={{ width: 32, height: 32, borderRadius: 7, background: "#C2563A", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🤲</div><h1 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#F5EDDC", fontFamily: "'Noto Serif TC', serif", letterSpacing: 1 }}>家歡診所徒手震波預約系統{isAdmin && " — 後台"}</h1></div>
         <div style={{ display: "flex", gap: 3, alignItems: "center", flexWrap: "wrap" }}>
           {isAdmin ? (<>
             {[{ k: "schedule", l: "排程表" }, { k: "lu", l: "盧獨立時段" }, { k: "lookup", l: "🔍 查詢" }, { k: "salary", l: "薪資" }, { k: "shifts", l: "班表" }].map(t => (<button key={t.k} onClick={() => setAdminTab(t.k)} style={{ padding: "5px 10px", borderRadius: 5, border: "none", cursor: "pointer", background: adminTab === t.k ? (t.k === "lu" ? LU_COLOR : "#C2563A") : "rgba(255,255,255,0.1)", color: adminTab === t.k ? "white" : "#C4B49A", fontWeight: 600, fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}>{t.l}</button>))}
@@ -1730,7 +1785,7 @@ export default function App() {
 
       {/* ── ADMIN ── */}
       {isAdmin && adminTab === "schedule" && (<><NavCtrl selDate={selDate} setSelDate={setSelDate} viewMode={adminView} setViewMode={setAdminView} showDayView={true} /><ThFilterBar filterTh={filterTh} setFilterTh={setFilterTh} /><div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10, padding: "5px 12px", background: "#FFFDF5", borderRadius: 7, border: "1px solid #E0D5C1", fontSize: 13, alignItems: "center" }}>{THERAPISTS.map(t => (<span key={t.id} style={{ display: "flex", alignItems: "center", gap: 3 }}><span style={{ display: "inline-flex", width: 14, height: 14, borderRadius: "50%", background: t.color, color: "white", fontSize: 8, fontWeight: 700, alignItems: "center", justifyContent: "center" }}>{thLabel(t)}</span><span>{t.name}</span></span>))}<span style={{ borderLeft: "1px solid #D4C5A9", paddingLeft: 8, display: "flex", gap: 6 }}><span style={{ color: "#2E7D6F", fontWeight: 600 }}>■班內</span><span style={{ color: "#C2563A", fontWeight: 600 }}>┈班外</span><span style={{ color: "#FFD700", fontWeight: 600 }}>▮已報到</span></span></div>
-        {adminView === "day" ? <AdminDayView appts={appts} selDate={selDate} onCellClick={(d, t) => setBookingModal({ date: d, time: t })} onApptClick={a => setAdminDetailModal(a)} mainSlotCfg={mainSlotCfg} setMainSlotCfg={fireSetMainSlotCfg} /> : <AdminWeekGrid appts={appts} selDate={selDate} onCellClick={(d, t) => setBookingModal({ date: d, time: t })} onApptClick={a => setAdminDetailModal(a)} filterTh={filterTh} cs={cs} mainSlotCfg={mainSlotCfg} />}</>)}
+        {adminView === "day" ? <AdminDayView appts={appts} luAppts={luAppts} selDate={selDate} onCellClick={(d, t) => setBookingModal({ date: d, time: t })} onApptClick={a => setAdminDetailModal(a)} mainSlotCfg={mainSlotCfg} setMainSlotCfg={fireSetMainSlotCfg} luSlotCfg={luSlotCfg} /> : <AdminWeekGrid appts={appts} selDate={selDate} onCellClick={(d, t) => setBookingModal({ date: d, time: t })} onApptClick={a => setAdminDetailModal(a)} filterTh={filterTh} cs={cs} mainSlotCfg={mainSlotCfg} />}</>)}
 
       {isAdmin && adminTab === "lu" && (<><NavCtrl selDate={selDate} setSelDate={setSelDate} viewMode={luAdminView} setViewMode={setLuAdminView} showDayView={true} />
         {luAdminView === "day" ? <LuAdminDayView appts={luAppts} selDate={selDate} onCellClick={(d, t) => setLuBookingModal({ date: d, time: t })} onApptClick={a => setLuDetailModal(a)} luSlotCfg={luSlotCfg} setLuSlotCfg={fireSetLuSlotCfg} />
