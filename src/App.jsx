@@ -419,7 +419,9 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
 
 /* ═══════════════════════════════════════════ 盧老師 Booking Form ═══════════════════════════════════════════ */
 function LuBookingForm({ date, time, appts, onBook, onClose, isAdmin, luSlotCfg }) {
-  const [patient, setPatient] = useState(""); const [bday, setBday] = useState(""); const [idNum, setIdNum] = useState(""); const [dur, setDur] = useState(15);
+  const [patient, setPatient] = useState(""); const [bday, setBday] = useState(""); const [idNum, setIdNum] = useState("");
+  const [chartNum, setChartNum] = useState("");
+  const [dur, setDur] = useState(15);
   const [selfRef, setSelfRef] = useState(false);
   const [err, setErr] = useState(""); const [confirmBuf, setConfirmBuf] = useState(null);
   const ds = fd(date);
@@ -434,38 +436,48 @@ function LuBookingForm({ date, time, appts, onBook, onClose, isAdmin, luSlotCfg 
   const hasBuf = useMemo(() => luBufferConflict(appts, ds, time, dur, null), [appts, ds, time, dur]);
   const canBook = !occupied && (isAdmin || (isLuDateOpen(ds) && allOpen && !hasBuf));
 
+  // Font sizes: admin = +3 levels (lbl 11→14, inp 13→16, body 12→15)
+  const fs = isAdmin ? { lbl: 14, inp: 16, btn: 15, note: 13, err: 14 } : { lbl: 11, inp: 13, btn: 14, note: 12, err: 11 };
+  const aLbl = { display: "block", marginBottom: 4, fontSize: fs.lbl, fontWeight: 600, color: "#5A4A3A" };
+  const aInp = { ...inp, fontSize: fs.inp };
+
   const finalBook = (data) => { onBook(data); onClose(); };
   const doBook = () => {
     if (!patient.trim()) { setErr("請輸入患者姓名"); return; }
-    if (!bday.trim() || bday.length !== 6) { setErr("請輸入民國年月日六碼"); return; }
+    if (isAdmin && !chartNum.trim()) { setErr("請輸入病歷號"); return; }
+    if (!isAdmin && (!bday.trim() || bday.length !== 6)) { setErr("請輸入民國年月日六碼"); return; }
     if (!isAdmin && !idNum.trim()) { setErr("請輸入身分證字號"); return; }
     if (!luValidRange(time, dur)) { setErr("超出盧獨立時段"); return; }
-    finalBook({ id: Date.now(), date: ds, time, duration: dur, patient: patient.trim(), birthday: bday.trim(), idNum: idNum.trim(), selfRef });
+    finalBook({ id: Date.now(), date: ds, time, duration: dur, patient: patient.trim(), birthday: bday.trim(), idNum: idNum.trim(), chartNum: chartNum.trim(), selfRef });
   };
   const submit = () => {
     if (!patient.trim()) { setErr("請輸入患者姓名"); return; }
-    if (!bday.trim() || bday.length !== 6) { setErr("請輸入民國年月日六碼"); return; }
+    if (isAdmin && !chartNum.trim()) { setErr("請輸入病歷號"); return; }
+    if (!isAdmin && (!bday.trim() || bday.length !== 6)) { setErr("請輸入民國年月日六碼"); return; }
     if (!isAdmin && !idNum.trim()) { setErr("請輸入身分證字號"); return; }
-    if (isAdmin && hasBuf && !occupied) { setConfirmBuf({ patient: patient.trim(), birthday: bday.trim(), idNum: idNum.trim() }); return; }
+    if (isAdmin && hasBuf && !occupied) { setConfirmBuf({ patient: patient.trim(), birthday: bday.trim(), idNum: idNum.trim(), chartNum: chartNum.trim() }); return; }
     doBook();
   };
 
-  return (<div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-    <div style={{ background: "#FFF8E6", border: "1.5px solid #E8DCC0", borderRadius: 8, padding: "10px 13px", fontSize: 12, color: "#5A4A3A", lineHeight: 1.7 }}>
+  return (<div style={{ display: "flex", flexDirection: "column", gap: isAdmin ? 16 : 12 }}>
+    <div style={{ background: "#FFF8E6", border: "1.5px solid #E8DCC0", borderRadius: 8, padding: "10px 13px", fontSize: fs.note, color: "#5A4A3A", lineHeight: 1.7 }}>
       <span style={{ fontWeight: 700, color: "#B8860B" }}>📌 注意：</span>此表單僅限預約徒手。若須預約震波請回到大預約表，並選擇不指定治療師，並於報到時跟櫃台說有同時約徒手及震波。
     </div>
-    <div style={{ background: "#E8F5F0", borderRadius: 7, padding: "8px 12px", display: "flex", gap: 14, fontSize: 12, color: "#1A6B5A" }}><span>📅 {ds}</span><span>🕐 {time}</span><span style={{ marginLeft: "auto", fontWeight: 600 }}>盧獨立時段</span></div>
-    <div><label style={lbl}>患者姓名 *</label><input value={patient} onChange={e => setPatient(e.target.value)} style={inp} placeholder="請輸入全名" /></div>
-    <div><label style={lbl}>生日（民國年月日六碼）*</label><input value={bday} onChange={e => setBday(e.target.value.replace(/\D/g, "").slice(0, 6))} style={inp} placeholder="如 800515" maxLength={6} /></div>
-    <div><label style={lbl}>身分證字號 {isAdmin ? "" : "*"}</label><input value={idNum} onChange={e => setIdNum(e.target.value.toUpperCase())} style={inp} placeholder={isAdmin ? "（後台選填）" : "請輸入身分證字號"} maxLength={10} /></div>
-    <div><label style={lbl}>治療時長</label><div style={{ display: "flex", gap: 5 }}>{DURATIONS.map(d => (<button key={d} onClick={() => { setDur(d); setErr(""); }} style={{ flex: 1, padding: "7px 0", borderRadius: 7, cursor: "pointer", fontSize: 12, border: dur === d ? `2px solid ${LU_COLOR}` : "1.5px solid #D4C5A9", background: dur === d ? "#E8F5F0" : "#FFFDF5", color: dur === d ? LU_COLOR : "#5A4A3A", fontWeight: dur === d ? 700 : 500, fontFamily: "'Noto Sans TC', sans-serif" }}>{d} 分</button>))}</div></div>
-    {isAdmin && <div><label style={lbl}>自轉／非自轉</label><div style={{ display: "flex", gap: 5 }}>{[{ v: true, l: "自轉" }, { v: false, l: "非自轉" }].map(o => (<button key={String(o.v)} onClick={() => setSelfRef(o.v)} style={{ flex: 1, padding: "7px 0", borderRadius: 7, cursor: "pointer", fontSize: 12, border: selfRef === o.v ? `2px solid ${LU_COLOR}` : "1.5px solid #D4C5A9", background: selfRef === o.v ? "#E8F5F0" : "#FFFDF5", color: selfRef === o.v ? LU_COLOR : "#5A4A3A", fontWeight: selfRef === o.v ? 700 : 500, fontFamily: "'Noto Sans TC', sans-serif" }}>{o.l}</button>))}</div></div>}
-    {occupied && <div style={{ padding: 8, background: "#FFF5F2", borderRadius: 7, fontSize: 11, color: "#C2563A", border: "1px solid #E8C8C0" }}>此時段已有預約</div>}
-    {!occupied && !allOpen && !isAdmin && <div style={{ padding: 8, background: "#FFF5F2", borderRadius: 7, fontSize: 11, color: "#C2563A", border: "1px solid #E8C8C0" }}>此時段未開放</div>}
-    {!occupied && hasBuf && !isAdmin && <div style={{ padding: 8, background: "#FFF8E6", borderRadius: 7, fontSize: 11, color: "#B8860B", border: "1px solid #E8DCC0" }}>此時段需間隔緩衝</div>}
-    {err && <div style={{ color: "#C2563A", fontSize: 11, background: "#FFF0EB", padding: "5px 9px", borderRadius: 5 }}>{err}</div>}
-    <button onClick={submit} disabled={!canBook} style={{ padding: 11, borderRadius: 9, border: "none", cursor: canBook ? "pointer" : "not-allowed", background: canBook ? `linear-gradient(135deg, ${LU_COLOR}, #145A4A)` : "#CCBFB0", color: "white", fontSize: 14, fontWeight: 700, fontFamily: "'Noto Sans TC', sans-serif" }}>確認預約</button>
-    <ConfirmModal open={!!confirmBuf} message="此預約違反 15 分鐘間隔規定，確定仍要預約嗎？" onOk={() => { setConfirmBuf(null); finalBook({ id: Date.now(), date: ds, time, duration: dur, patient: confirmBuf.patient, birthday: confirmBuf.birthday, idNum: confirmBuf.idNum || "", selfRef }); }} onCancel={() => setConfirmBuf(null)} />
+    <div style={{ background: "#E8F5F0", borderRadius: 7, padding: "8px 12px", display: "flex", gap: 14, fontSize: isAdmin ? 15 : 12, color: "#1A6B5A" }}><span>📅 {ds}</span><span>🕐 {time}</span><span style={{ marginLeft: "auto", fontWeight: 600 }}>盧獨立時段</span></div>
+    <div><label style={aLbl}>患者姓名 *</label><input value={patient} onChange={e => setPatient(e.target.value)} style={aInp} placeholder="請輸入全名" /></div>
+    {isAdmin && <div><label style={aLbl}>病歷號 *</label><input value={chartNum} onChange={e => setChartNum(e.target.value)} style={aInp} placeholder="請輸入病歷號" /></div>}
+    {isAdmin
+      ? <div><label style={aLbl}>生日（民國年月日六碼，選填）</label><input value={bday} onChange={e => setBday(e.target.value.replace(/\D/g, "").slice(0, 6))} style={aInp} placeholder="如 800515" maxLength={6} /></div>
+      : <div><label style={aLbl}>生日（民國年月日六碼）*</label><input value={bday} onChange={e => setBday(e.target.value.replace(/\D/g, "").slice(0, 6))} style={aInp} placeholder="如 800515" maxLength={6} /></div>}
+    <div><label style={aLbl}>身分證字號 {isAdmin ? "（選填）" : "*"}</label><input value={idNum} onChange={e => setIdNum(e.target.value.toUpperCase())} style={aInp} placeholder={isAdmin ? "（後台選填）" : "請輸入身分證字號"} maxLength={10} /></div>
+    <div><label style={aLbl}>治療時長</label><div style={{ display: "flex", gap: 5 }}>{DURATIONS.map(d => (<button key={d} onClick={() => { setDur(d); setErr(""); }} style={{ flex: 1, padding: "7px 0", borderRadius: 7, cursor: "pointer", fontSize: fs.btn, border: dur === d ? `2px solid ${LU_COLOR}` : "1.5px solid #D4C5A9", background: dur === d ? "#E8F5F0" : "#FFFDF5", color: dur === d ? LU_COLOR : "#5A4A3A", fontWeight: dur === d ? 700 : 500, fontFamily: "'Noto Sans TC', sans-serif" }}>{d} 分</button>))}</div></div>
+    {isAdmin && <div><label style={aLbl}>自轉／非自轉</label><div style={{ display: "flex", gap: 5 }}>{[{ v: true, l: "自轉" }, { v: false, l: "非自轉" }].map(o => (<button key={String(o.v)} onClick={() => setSelfRef(o.v)} style={{ flex: 1, padding: "7px 0", borderRadius: 7, cursor: "pointer", fontSize: fs.btn, border: selfRef === o.v ? `2px solid ${LU_COLOR}` : "1.5px solid #D4C5A9", background: selfRef === o.v ? "#E8F5F0" : "#FFFDF5", color: selfRef === o.v ? LU_COLOR : "#5A4A3A", fontWeight: selfRef === o.v ? 700 : 500, fontFamily: "'Noto Sans TC', sans-serif" }}>{o.l}</button>))}</div></div>}
+    {occupied && <div style={{ padding: 8, background: "#FFF5F2", borderRadius: 7, fontSize: fs.err, color: "#C2563A", border: "1px solid #E8C8C0" }}>此時段已有預約</div>}
+    {!occupied && !allOpen && !isAdmin && <div style={{ padding: 8, background: "#FFF5F2", borderRadius: 7, fontSize: fs.err, color: "#C2563A", border: "1px solid #E8C8C0" }}>此時段未開放</div>}
+    {!occupied && hasBuf && !isAdmin && <div style={{ padding: 8, background: "#FFF8E6", borderRadius: 7, fontSize: fs.err, color: "#B8860B", border: "1px solid #E8DCC0" }}>此時段需間隔緩衝</div>}
+    {err && <div style={{ color: "#C2563A", fontSize: fs.err, background: "#FFF0EB", padding: "5px 9px", borderRadius: 5 }}>{err}</div>}
+    <button onClick={submit} disabled={!canBook} style={{ padding: isAdmin ? 14 : 11, borderRadius: 9, border: "none", cursor: canBook ? "pointer" : "not-allowed", background: canBook ? `linear-gradient(135deg, ${LU_COLOR}, #145A4A)` : "#CCBFB0", color: "white", fontSize: isAdmin ? 17 : 14, fontWeight: 700, fontFamily: "'Noto Sans TC', sans-serif" }}>確認預約</button>
+    <ConfirmModal open={!!confirmBuf} message="此預約違反 15 分鐘間隔規定，確定仍要預約嗎？" onOk={() => { setConfirmBuf(null); finalBook({ id: Date.now(), date: ds, time, duration: dur, patient: confirmBuf.patient, birthday: confirmBuf.birthday, idNum: confirmBuf.idNum || "", chartNum: confirmBuf.chartNum || "", selfRef }); }} onCancel={() => setConfirmBuf(null)} />
   </div>);
 }
 
@@ -1692,8 +1704,8 @@ export default function App() {
   const handleLuBook = async (appt) => {
     try {
       const { id, ...data } = appt;
-      await addDoc(collection(db, "luAppts"), data);
-      console.log("luAppt written OK");
+      const ref = await addDoc(collection(db, "luAppts"), data);
+      pushUndo({ type: "addAppt", id: ref.id, collection: "luAppts" });
     } catch (e) {
       console.error("handleLuBook error:", e);
       setAlertMsg("預約寫入失敗：" + e.message);
@@ -1701,14 +1713,18 @@ export default function App() {
   };
   const handleLuDelete = async (id) => {
     try {
+      const snap = luAppts.find(a => a.id === id);
+      if (snap) { const { id: _id, ...data } = snap; pushUndo({ type: "deleteAppt", id, data, collection: "luAppts" }); }
       await deleteDoc(doc(db, "luAppts", id));
       setLuDetailModal(null);
     } catch (e) { console.error("lu delete error:", e); setAlertMsg("刪除失敗：" + e.message); }
   };
   const handleLuUpdate = async (id, ch) => {
     try {
+      const prev = luAppts.find(a => a.id === id);
+      if (prev) { const rollback = {}; Object.keys(ch).forEach(k => { rollback[k] = prev[k]; }); pushUndo({ type: "updateAppt", id, rollback, collection: "luAppts" }); }
       await updateDoc(doc(db, "luAppts", id), ch);
-      setLuDetailModal(prev => prev?.id === id ? { ...prev, ...ch } : prev);
+      setLuDetailModal(prev2 => prev2?.id === id ? { ...prev2, ...ch } : prev2);
     } catch (e) { console.error("lu update error:", e); setAlertMsg("更新失敗：" + e.message); }
   };
   const handleLuCopyDates = async (appt, targets) => {
