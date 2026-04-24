@@ -902,7 +902,7 @@ function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainS
             const ROW_H = 20; // fixed height for every row in both columns
             const morningRows = printContent.rows.filter(r => toM(r.time) < toM("14:00"));
             const MORNING_SLOTS = 14; // fixed: 8:30–11:45 = 14 slots
-            const spacerH = 4 * ROW_H + 10; // tune this number to align right 14:00 with left 14:00
+            const spacerH = 4 * ROW_H - 10; // tune this number to align right 14:00 with left 14:00
             const renderLeftRow = (r, i) => {
               const isH = r.time.endsWith(":00");
               const isBr = r.time === "14:00";
@@ -1175,12 +1175,11 @@ function ShiftEditor({ customShifts, setCustomShifts }) {
 
 /* ═══════════════════════════════════════════ Salary ═══════════════════════════════════════════ */
 /* ═══════════════════════════════════════════ Lu Admin Detail (edit/copy/delete/報到) ═══════════════════════════════════════════ */
-function LuAdminDetail({ appt, appts, onClose, onDelete, onUpdate, onAlert, onCopyDates }) {
-  const [editing, setEditing] = useState(false); const [showCopy, setShowCopy] = useState(false); const [copySelected, setCopySelected] = useState([]);
+function LuAdminDetail({ appt, appts, onClose, onDelete, onUpdate, onAlert, onCopyDates, onStartCopy }) {
+  const [editing, setEditing] = useState(false);
   const [dur, setDur] = useState(appt.duration); const [patient, setPatient] = useState(appt.patient); const [bday, setBday] = useState(appt.birthday);
   const [selfRef, setSelfRef] = useState(appt.selfRef ?? false);
   const sel = { padding: "6px 9px", borderRadius: 7, border: "1.5px solid #D4C5A9", fontSize: 12, background: "#FFFDF5", fontFamily: "'Noto Sans TC', sans-serif", outline: "none", cursor: "pointer", width: "100%" };
-  const futureDates = useMemo(() => { const d = new Date(appt.date), dow = d.getDay(), y = d.getFullYear(), mo = d.getMonth(); const dim = new Date(y, mo + 1, 0).getDate(), dates = []; for (let day = d.getDate() + 1; day <= dim; day++) { const c = new Date(y, mo, day); if (c.getDay() === dow) dates.push(fd(c)); } return dates; }, [appt.date]);
 
   const doSave = () => { onUpdate(appt.id, { duration: dur, patient, birthday: bday, selfRef }); setEditing(false); };
   const save = () => {
@@ -1199,7 +1198,7 @@ function LuAdminDetail({ appt, appts, onClose, onDelete, onUpdate, onAlert, onCo
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontSize: 12 }}><div><span style={{ color: "#8B7355" }}>日期：</span>{appt.date}</div><div><span style={{ color: "#8B7355" }}>時間：</span>{appt.time}</div></div>
     </div>
 
-    {!editing && !showCopy && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontSize: 12, padding: "0 2px" }}>
+    {!editing && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontSize: 12, padding: "0 2px" }}>
       <div><span style={{ color: "#8B7355" }}>時長：</span><strong>{appt.duration} 分</strong></div>
       <div><span style={{ color: "#8B7355" }}>轉介：</span><strong style={{ color: appt.selfRef ? "#5B6ABF" : "#B8860B" }}>{appt.selfRef ? "自轉" : "非自轉"}</strong></div>
       <div><span style={{ color: "#8B7355" }}>報到：</span><strong style={{ color: appt.checkedIn ? "#2E7D6F" : "#B5A898" }}>{appt.checkedIn ? "已報到" : "未報到"}</strong></div>
@@ -1212,18 +1211,10 @@ function LuAdminDetail({ appt, appts, onClose, onDelete, onUpdate, onAlert, onCo
       <div><label style={{ fontSize: 10, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>自轉／非自轉</label><select value={selfRef ? "self" : "other"} onChange={e => setSelfRef(e.target.value === "self")} style={sel}><option value="self">自轉</option><option value="other">非自轉</option></select></div>
     </div>}
 
-    {showCopy && <div style={{ background: "#E8F5F0", borderRadius: 8, padding: 14 }}><div style={{ fontSize: 12, fontWeight: 600, color: "#3D2B1F", marginBottom: 10 }}>複製到本月其他{WDAY[(new Date(appt.date).getDay() + 6) % 7]}：</div>
-      {futureDates.length === 0 ? <div style={{ fontSize: 12, color: "#8B7355" }}>本月已無後續相同星期</div> : <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>{futureDates.map(ds2 => {
-        const sel2 = copySelected.includes(ds2); const conflict = luSlotOccupied(appts, ds2, appt.time, appt.duration, null); const d = new Date(ds2);
-        return (<button key={ds2} disabled={conflict} onClick={() => !conflict && setCopySelected(p => p.includes(ds2) ? p.filter(x => x !== ds2) : [...p, ds2])} style={{ padding: "8px 14px", borderRadius: 8, cursor: conflict ? "not-allowed" : "pointer", border: sel2 ? `2px solid ${LU_COLOR}` : "1.5px solid #D4C5A9", background: conflict ? "#EDE5D5" : sel2 ? "#E8F5F0" : "#FFFDF5", color: conflict ? "#B5A898" : sel2 ? LU_COLOR : "#3D2B1F", fontWeight: sel2 ? 700 : 500, fontSize: 13, opacity: conflict ? 0.5 : 1, fontFamily: "'Noto Sans TC', sans-serif" }}>{`${d.getMonth() + 1}/${d.getDate()}`}{conflict && <span style={{ display: "block", fontSize: 8, color: "#B5A898" }}>衝突</span>}</button>);
-      })}</div>}
-      <div style={{ display: "flex", gap: 6 }}><button onClick={() => { if (copySelected.length) { onCopyDates(appt, copySelected); setShowCopy(false); setCopySelected([]); } }} disabled={!copySelected.length} style={{ flex: 1, padding: 9, borderRadius: 7, border: "none", background: copySelected.length ? `linear-gradient(135deg, ${LU_COLOR}, #145A4A)` : "#CCBFB0", color: "white", cursor: copySelected.length ? "pointer" : "not-allowed", fontWeight: 600, fontSize: 12, fontFamily: "'Noto Sans TC', sans-serif" }}>確認 ({copySelected.length})</button><button onClick={() => { setShowCopy(false); setCopySelected([]); }} style={{ padding: "9px 14px", borderRadius: 7, border: "1.5px solid #D4C5A9", background: "#FFFDF5", color: "#5A4A3A", cursor: "pointer", fontWeight: 600, fontSize: 12, fontFamily: "'Noto Sans TC', sans-serif" }}>取消</button></div>
-    </div>}
-
-    {!editing && !showCopy && <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+    {!editing && <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
       <button onClick={() => onUpdate(appt.id, { checkedIn: !appt.checkedIn })} style={{ flex: 1, padding: 9, borderRadius: 7, border: appt.checkedIn ? `1.5px solid ${LU_COLOR}` : "1.5px solid #D4C5A9", background: appt.checkedIn ? "#E8F5F0" : "#FFFDF5", color: appt.checkedIn ? LU_COLOR : "#5A4A3A", cursor: "pointer", fontWeight: 600, fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif" }}>{appt.checkedIn ? "✅ 報到成功" : "📋 報到"}</button>
       <button onClick={() => setEditing(true)} style={{ flex: 1, padding: 9, borderRadius: 7, border: "1.5px solid #D4C5A9", background: "#FFFDF5", color: "#5A4A3A", cursor: "pointer", fontWeight: 600, fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif" }}>✏️ 編輯</button>
-      <button onClick={() => setShowCopy(true)} style={{ flex: 1, padding: 9, borderRadius: 7, border: `1.5px solid ${LU_COLOR}`, background: "#E8F5F0", color: LU_COLOR, cursor: "pointer", fontWeight: 600, fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif" }}>📋 複製</button>
+      <button onClick={() => { onStartCopy(appt); onClose(); }} style={{ flex: 1, padding: 9, borderRadius: 7, border: `1.5px solid ${LU_COLOR}`, background: "#E8F5F0", color: LU_COLOR, cursor: "pointer", fontWeight: 600, fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif" }}>📋 複製</button>
       <button onClick={() => { onDelete(appt.id); onClose(); }} style={{ flex: 1, padding: 9, borderRadius: 7, border: "1.5px solid #E8C8C0", background: "#FFF5F2", color: "#C2563A", cursor: "pointer", fontWeight: 600, fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif" }}>🗑 刪除</button>
     </div>}
     {editing && <div style={{ display: "flex", gap: 6 }}><button onClick={save} style={{ flex: 1, padding: 9, borderRadius: 7, border: "none", background: `linear-gradient(135deg, ${LU_COLOR}, #145A4A)`, color: "white", cursor: "pointer", fontWeight: 600, fontSize: 12, fontFamily: "'Noto Sans TC', sans-serif" }}>✓ 儲存</button><button onClick={() => setEditing(false)} style={{ flex: 1, padding: 9, borderRadius: 7, border: "1.5px solid #D4C5A9", background: "#FFFDF5", color: "#5A4A3A", cursor: "pointer", fontWeight: 600, fontSize: 12, fontFamily: "'Noto Sans TC', sans-serif" }}>取消</button></div>}
@@ -1823,8 +1814,26 @@ export default function App() {
         }} onApptClick={a => setAdminDetailModal(a)} filterTh={filterTh} cs={cs} mainSlotCfg={mainSlotCfg} />}</>)}
 
       {isAdmin && adminTab === "lu" && (<><NavCtrl selDate={selDate} setSelDate={setSelDate} viewMode={luAdminView} setViewMode={setLuAdminView} showDayView={true} />
-        {luAdminView === "day" ? <LuAdminDayView appts={luAppts} selDate={selDate} onCellClick={(d, t) => setLuBookingModal({ date: d, time: t })} onApptClick={a => setLuDetailModal(a)} luSlotCfg={luSlotCfg} setLuSlotCfg={fireSetLuSlotCfg} />
-        : <LuAdminWeekGrid appts={luAppts} selDate={selDate} onCellClick={(d, t) => setLuBookingModal({ date: d, time: t })} onApptClick={a => setLuDetailModal(a)} luSlotCfg={luSlotCfg} />}</>)}
+        {copyMode?.isLu && <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", background: LU_COLOR, color: "white", borderRadius: 8, marginBottom: 10, fontSize: 14, fontWeight: 600 }}>
+          📋 複製模式：點選任一可預約格即貼上「{copyMode.appt.patient}」
+          <button onClick={() => setCopyMode(null)} style={{ marginLeft: "auto", padding: "4px 12px", borderRadius: 5, border: "1px solid rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.15)", color: "white", cursor: "pointer", fontSize: 12 }}>✕ 取消</button>
+        </div>}
+        {luAdminView === "day" ? <LuAdminDayView appts={luAppts} selDate={selDate} onCellClick={(d, t) => {
+          if (copyMode?.isLu) {
+            const { id: _id, date: _date, time: _time, checkedIn: _ci, ...base } = copyMode.appt;
+            handleLuBook({ ...base, date: fd(d), time: t, checkedIn: false });
+            setCopyMode(null);
+            setAlertMsg(`✅ 已複製「${copyMode.appt.patient}」到 ${fd(d)} ${t}`);
+          } else { setLuBookingModal({ date: d, time: t }); }
+        }} onApptClick={a => setLuDetailModal(a)} luSlotCfg={luSlotCfg} setLuSlotCfg={fireSetLuSlotCfg} />
+        : <LuAdminWeekGrid appts={luAppts} selDate={selDate} onCellClick={(d, t) => {
+          if (copyMode?.isLu) {
+            const { id: _id, date: _date, time: _time, checkedIn: _ci, ...base } = copyMode.appt;
+            handleLuBook({ ...base, date: fd(d), time: t, checkedIn: false });
+            setCopyMode(null);
+            setAlertMsg(`✅ 已複製「${copyMode.appt.patient}」到 ${fd(d)} ${t}`);
+          } else { setLuBookingModal({ date: d, time: t }); }
+        }} onApptClick={a => setLuDetailModal(a)} luSlotCfg={luSlotCfg} />}</>)}
 
       {isAdmin && adminTab === "salary" && <SalarySummary appts={appts} luAppts={luAppts} cs={cs} />}
       {isAdmin && adminTab === "shifts" && <ShiftEditor customShifts={cs} setCustomShifts={fireSetCs} />}
@@ -1835,7 +1844,7 @@ export default function App() {
     <Modal open={!!bookingModal} onClose={() => setBookingModal(null)} title={bookingModal?.addExtra ? "外加預約" : "新增預約"}>{bookingModal && <BookingForm date={bookingModal.date} time={bookingModal.time} appts={appts} onBook={handleBook} onClose={() => setBookingModal(null)} isAdmin={isAdmin} cs={cs} mainSlotCfg={mainSlotCfg} addExtra={bookingModal.addExtra} />}</Modal>
     <Modal open={!!luBookingModal} onClose={() => setLuBookingModal(null)} title="盧獨立時段預約">{luBookingModal && <LuBookingForm date={luBookingModal.date} time={luBookingModal.time} appts={luAppts} onBook={handleLuBook} onClose={() => setLuBookingModal(null)} isAdmin={isAdmin} luSlotCfg={luSlotCfg} />}</Modal>
     <Modal open={!!adminDetailModal} onClose={() => setAdminDetailModal(null)} title="預約管理">{adminDetailModal && <AdminDetail appt={adminDetailModal} appts={appts} onClose={() => setAdminDetailModal(null)} onDelete={handleDelete} onUpdate={handleUpdate} onAlert={setAlertMsg} onCopyDates={handleCopyDates} onStartCopy={a => { setCopyMode({ appt: a }); setAdminDetailModal(null); setAdminTab("schedule"); setAlertMsg("📋 複製模式：請點選任一可預約格"); }} onAddExtra={(a) => { setAdminDetailModal(null); setBookingModal({ date: new Date(a.date), time: a.time, addExtra: true }); }} />}</Modal>
-    <Modal open={!!luDetailModal} onClose={() => setLuDetailModal(null)} title="盧獨立時段預約管理">{luDetailModal && <LuAdminDetail appt={luDetailModal} appts={luAppts} onClose={() => setLuDetailModal(null)} onDelete={handleLuDelete} onUpdate={handleLuUpdate} onAlert={setAlertMsg} onCopyDates={handleLuCopyDates} />}</Modal>
+    <Modal open={!!luDetailModal} onClose={() => setLuDetailModal(null)} title="盧獨立時段預約管理">{luDetailModal && <LuAdminDetail appt={luDetailModal} appts={luAppts} onClose={() => setLuDetailModal(null)} onDelete={handleLuDelete} onUpdate={handleLuUpdate} onAlert={setAlertMsg} onCopyDates={handleLuCopyDates} onStartCopy={a => { setCopyMode({ appt: a, isLu: true }); setLuDetailModal(null); setAdminTab("lu"); setAlertMsg("📋 複製模式（盧獨立）：請點選任一可預約格"); }} />}</Modal>
     <AlertModal open={!!alertMsg} message={alertMsg} onClose={() => setAlertMsg("")} />
     {/* Lu morning/afternoon choice */}
     <Modal open={luChoiceModal} onClose={() => setLuChoiceModal(false)} title="請問想預約盧老師上午或午後時段？">
