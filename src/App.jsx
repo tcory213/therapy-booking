@@ -897,82 +897,81 @@ function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainS
             <div style={{ fontSize: 13, color: "#444", marginLeft: "auto" }}>預約 {stats.t} 筆・{stats.m} 分</div>
           </div>
           {/* Two-column print layout */}
-          <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-            {/* LEFT: Main schedule */}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "#555", marginBottom: 3, borderBottom: "1px solid #ccc", paddingBottom: 2 }}>一般預約</div>
-              <table style={{ borderCollapse: "collapse", width: "100%", fontFamily: "'Noto Sans TC', sans-serif", fontSize: 12, tableLayout: "fixed" }}>
-                <colgroup><col style={{ width: "16%" }} /><col style={{ width: "84%" }} /></colgroup>
-                <tbody>
-                  {printContent.rows.map((r, i) => {
-                    const isH = r.time.endsWith(":00");
-                    const isBr = r.time === "14:00";
-                    const bg = r.type === "closed" ? "#1A1A1A" : "white";
-                    const rowH = r.type === "appt" ? "auto" : "18px";
-                    const bdTop = isBr ? "2.5px solid #555" : isH ? "1px solid #888" : "1px solid #ddd";
-                    return (
-                      <tr key={i} style={{ borderTop: bdTop }}>
-                        <td style={{ padding: "1px 4px", textAlign: "center", fontWeight: isH ? 700 : 400, color: r.type === "closed" ? "rgba(255,255,255,0.5)" : isH ? "#111" : "#555", fontSize: isH ? 12 : 11, background: r.type === "closed" ? "#1A1A1A" : isH ? "#EDEAD8" : "white", borderRight: "1px solid #bbb", whiteSpace: "nowrap", height: rowH }}>{r.time}</td>
-                        <td style={{ padding: r.type === "appt" ? "2px 6px" : "1px 6px", background: bg, height: rowH, verticalAlign: "middle" }}>
-                          {r.type === "appt" && (
-                            <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                              <span style={{ display: "inline-block", width: 16, height: 16, borderRadius: "50%", background: r.color, color: "white", textAlign: "center", lineHeight: "16px", fontSize: 10, fontWeight: 700, flexShrink: 0 }}>{r.thLabel}</span>
-                              <strong style={{ fontSize: 12 }}>{r.patient}</strong>
-                              {r.isCont ? <span style={{ fontSize: 11, color: "#888" }}>（續）</span> : <>
-                                <span style={{ color: "#555", fontSize: 11 }}>{r.chartNum ? `#${r.chartNum}` : r.birthday}</span>
-                                <span style={{ fontSize: 11, color: "#444" }}>{r.duration}分</span>
-                                <span style={{ fontSize: 11, color: "#333", background: "#eee", padding: "0 3px", borderRadius: 2 }}>{r.ttLabel}</span>
-                              </>}
-                            </span>
-                          )}
-                          {r.type === "closed" && <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>未開放</span>}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            {/* RIGHT: Lu schedule, aligned from 14:00 */}
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: LU_COLOR, marginBottom: 3, borderBottom: `1px solid ${LU_COLOR}`, paddingBottom: 2 }}>盧獨立時段（14:00 – 20:45）</div>
-              {/* Top spacer: rows before 14:00 in main = 8:30~11:45 = morning slots = toM(14:00)-toM(8:30) / 15 rows = 22 rows + any appt rows */}
-              {(() => {
-                const morningRows = printContent.rows.filter(r => toM(r.time) < toM("14:00"));
-                const spacerH = morningRows.length * 18;
-                return <div style={{ height: spacerH }} />;
-              })()}
-              <table style={{ borderCollapse: "collapse", width: "100%", fontFamily: "'Noto Sans TC', sans-serif", fontSize: 12, tableLayout: "fixed" }}>
-                <colgroup><col style={{ width: "16%" }} /><col style={{ width: "84%" }} /></colgroup>
-                <tbody>
-                  {printContent.luRows.map((r, i) => {
-                    const isH = r.time.endsWith(":00");
-                    const bg = r.type === "closed" ? "#1A1A1A" : "white";
-                    const rowH = r.type === "appt" ? "auto" : "18px";
-                    const bdTop = isH ? "1px solid #888" : "1px solid #ddd";
-                    return (
-                      <tr key={i} style={{ borderTop: bdTop }}>
-                        <td style={{ padding: "1px 4px", textAlign: "center", fontWeight: isH ? 700 : 400, color: r.type === "closed" ? "rgba(255,255,255,0.5)" : isH ? LU_COLOR : "#555", fontSize: isH ? 12 : 11, background: r.type === "closed" ? "#1A1A1A" : isH ? "#E8F5F0" : "white", borderRight: `1px solid ${LU_COLOR}60`, whiteSpace: "nowrap", height: rowH }}>{r.time}</td>
-                        <td style={{ padding: r.type === "appt" ? "2px 6px" : "1px 6px", background: bg, height: rowH, verticalAlign: "middle" }}>
-                          {r.type === "appt" && (
-                            <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-                              <span style={{ display: "inline-block", width: 16, height: 16, borderRadius: "50%", background: LU_COLOR, color: "white", textAlign: "center", lineHeight: "16px", fontSize: 10, fontWeight: 700, flexShrink: 0 }}>盧</span>
-                              <strong style={{ fontSize: 12 }}>{r.patient}</strong>
-                              {r.isCont ? <span style={{ fontSize: 11, color: "#888" }}>（續）</span> : <>
-                                <span style={{ color: "#555", fontSize: 11 }}>{r.chartNum ? `#${r.chartNum}` : r.birthday}</span>
-                                <span style={{ fontSize: 11, color: "#444" }}>{r.duration}分</span>
-                              </>}
-                            </span>
-                          )}
-                          {r.type === "closed" && <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>未開放</span>}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          {(() => {
+            const ROW_H = 20; // fixed height for every row in both columns
+            const morningRows = printContent.rows.filter(r => toM(r.time) < toM("14:00"));
+            // spacer = morning rows height + 1.5 extra rows (visual offset requested)
+            const spacerH = morningRows.length * ROW_H + Math.round(1.5 * ROW_H);
+            const renderLeftRow = (r, i) => {
+              const isH = r.time.endsWith(":00");
+              const isBr = r.time === "14:00";
+              const bg = r.type === "closed" ? "#1A1A1A" : "white";
+              const bdTop = isBr ? "2.5px solid #555" : isH ? "1px solid #888" : "1px solid #ddd";
+              return (
+                <tr key={i} style={{ borderTop: bdTop }}>
+                  <td style={{ padding: "0 4px", textAlign: "center", fontWeight: isH ? 700 : 400, color: r.type === "closed" ? "rgba(255,255,255,0.5)" : isH ? "#111" : "#555", fontSize: isH ? 12 : 11, background: r.type === "closed" ? "#1A1A1A" : isH ? "#EDEAD8" : "white", borderRight: "1px solid #bbb", whiteSpace: "nowrap", height: ROW_H, lineHeight: `${ROW_H}px` }}>{r.time}</td>
+                  <td style={{ padding: "0 6px", background: bg, height: ROW_H, maxHeight: ROW_H, overflow: "hidden", verticalAlign: "middle" }}>
+                    {r.type === "appt" && (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, flexWrap: "nowrap", overflow: "hidden" }}>
+                        <span style={{ display: "inline-block", width: 14, height: 14, borderRadius: "50%", background: r.color, color: "white", textAlign: "center", lineHeight: "14px", fontSize: 9, fontWeight: 700, flexShrink: 0 }}>{r.thLabel}</span>
+                        <strong style={{ fontSize: 12, whiteSpace: "nowrap" }}>{r.patient}</strong>
+                        {r.isCont ? <span style={{ fontSize: 10, color: "#888" }}>（續）</span> : <>
+                          <span style={{ color: "#555", fontSize: 10, whiteSpace: "nowrap" }}>{r.chartNum ? `#${r.chartNum}` : r.birthday}</span>
+                          <span style={{ fontSize: 10, color: "#444", whiteSpace: "nowrap" }}>{r.duration}分</span>
+                          <span style={{ fontSize: 10, color: "#333", background: "#eee", padding: "0 3px", borderRadius: 2, whiteSpace: "nowrap" }}>{r.ttLabel}</span>
+                        </>}
+                      </span>
+                    )}
+                    {r.type === "closed" && <span style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>未開放</span>}
+                  </td>
+                </tr>
+              );
+            };
+            const renderRightRow = (r, i) => {
+              const isH = r.time.endsWith(":00");
+              const bg = r.type === "closed" ? "#1A1A1A" : "white";
+              const bdTop = isH ? "1px solid #888" : "1px solid #ddd";
+              return (
+                <tr key={i} style={{ borderTop: bdTop }}>
+                  <td style={{ padding: "0 4px", textAlign: "center", fontWeight: isH ? 700 : 400, color: r.type === "closed" ? "rgba(255,255,255,0.5)" : isH ? LU_COLOR : "#555", fontSize: isH ? 12 : 11, background: r.type === "closed" ? "#1A1A1A" : isH ? "#E8F5F0" : "white", borderRight: `1px solid ${LU_COLOR}60`, whiteSpace: "nowrap", height: ROW_H, lineHeight: `${ROW_H}px` }}>{r.time}</td>
+                  <td style={{ padding: "0 6px", background: bg, height: ROW_H, maxHeight: ROW_H, overflow: "hidden", verticalAlign: "middle" }}>
+                    {r.type === "appt" && (
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 4, flexWrap: "nowrap", overflow: "hidden" }}>
+                        <span style={{ display: "inline-block", width: 14, height: 14, borderRadius: "50%", background: LU_COLOR, color: "white", textAlign: "center", lineHeight: "14px", fontSize: 9, fontWeight: 700, flexShrink: 0 }}>盧</span>
+                        <strong style={{ fontSize: 12, whiteSpace: "nowrap" }}>{r.patient}</strong>
+                        {r.isCont ? <span style={{ fontSize: 10, color: "#888" }}>（續）</span> : <>
+                          <span style={{ color: "#555", fontSize: 10, whiteSpace: "nowrap" }}>{r.chartNum ? `#${r.chartNum}` : r.birthday}</span>
+                          <span style={{ fontSize: 10, color: "#444", whiteSpace: "nowrap" }}>{r.duration}分</span>
+                        </>}
+                      </span>
+                    )}
+                    {r.type === "closed" && <span style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>未開放</span>}
+                  </td>
+                </tr>
+              );
+            };
+            return (
+              <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
+                {/* LEFT */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: "#555", marginBottom: 3, borderBottom: "1px solid #ccc", paddingBottom: 2 }}>一般預約</div>
+                  <table style={{ borderCollapse: "collapse", width: "100%", fontFamily: "'Noto Sans TC', sans-serif", fontSize: 12, tableLayout: "fixed" }}>
+                    <colgroup><col style={{ width: "16%" }} /><col style={{ width: "84%" }} /></colgroup>
+                    <tbody>{printContent.rows.map(renderLeftRow)}</tbody>
+                  </table>
+                </div>
+                {/* RIGHT */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 10, fontWeight: 700, color: LU_COLOR, marginBottom: 3, borderBottom: `1px solid ${LU_COLOR}`, paddingBottom: 2 }}>盧獨立時段（14:00 – 20:45）</div>
+                  <div style={{ height: spacerH }} />
+                  <table style={{ borderCollapse: "collapse", width: "100%", fontFamily: "'Noto Sans TC', sans-serif", fontSize: 12, tableLayout: "fixed" }}>
+                    <colgroup><col style={{ width: "16%" }} /><col style={{ width: "84%" }} /></colgroup>
+                    <tbody>{printContent.luRows.map(renderRightRow)}</tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
     )}
