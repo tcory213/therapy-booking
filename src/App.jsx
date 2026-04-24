@@ -77,6 +77,7 @@ function isNextMonthLocked(ds) {
 function isLuDefaultClosed(ds, time) {
   const dow = new Date(ds).getDay();
   const m = toM(time);
+  if (dow === 3 || dow === 5) return true; // Wed / Fri: fully closed
   if ((dow === 1 || dow === 2) && m >= toM("20:30")) return true; // Mon/Tue 20:30+
   if (dow === 4 && m >= toM("18:00")) return true; // Thu 18:00+
   return false;
@@ -901,7 +902,8 @@ function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainS
             const ROW_H = 20; // fixed height for every row in both columns
             const morningRows = printContent.rows.filter(r => toM(r.time) < toM("14:00"));
             // spacer = morning rows height + 1.5 extra rows (visual offset requested)
-            const spacerH = morningRows.length * ROW_H + Math.round(1.5 * ROW_H) + 40;
+            const MORNING_SLOTS = 14; // fixed: 8:30–11:45 = 14 slots regardless of appt rows
+            const spacerH = (MORNING_SLOTS + 14) * ROW_H;
             const renderLeftRow = (r, i) => {
               const isH = r.time.endsWith(":00");
               const isBr = r.time === "14:00";
