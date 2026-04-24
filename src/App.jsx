@@ -8,7 +8,7 @@ const THERAPISTS = [
   { id: "B", name: "盧治療師", label: "盧", color: "#2E7D6F" },
   { id: "C", name: "蔡治療師", label: "蔡", color: "#5B6ABF" },
   { id: "D", name: "吳治療師", label: "吳", color: "#B8860B" },
-  { id: "E", name: "東治療師", label: "東", color: "#8B5C9E" },
+  { id: "E", name: "東治療師", label: "東", color: "#ff69da" },
 ];
 const TH_MAP = Object.fromEntries(THERAPISTS.map(t => [t.id, t]));
 TH_MAP["X"] = { id: "X", name: "不指定", label: "?", color: "#8B7355" };
@@ -901,7 +901,7 @@ function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainS
             const ROW_H = 20; // fixed height for every row in both columns
             const morningRows = printContent.rows.filter(r => toM(r.time) < toM("14:00"));
             // spacer = morning rows height + 1.5 extra rows (visual offset requested)
-            const spacerH = morningRows.length * ROW_H + Math.round(1.5 * ROW_H) + 30;
+            const spacerH = morningRows.length * ROW_H + Math.round(1.5 * ROW_H) + 22;
             const renderLeftRow = (r, i) => {
               const isH = r.time.endsWith(":00");
               const isBr = r.time === "14:00";
