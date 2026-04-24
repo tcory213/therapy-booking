@@ -901,7 +901,7 @@ function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainS
             const ROW_H = 20; // fixed height for every row in both columns
             const morningRows = printContent.rows.filter(r => toM(r.time) < toM("14:00"));
             // spacer = morning rows height + 1.5 extra rows (visual offset requested)
-            const spacerH = morningRows.length * ROW_H + Math.round(1.5 * ROW_H) + 12;
+            const spacerH = morningRows.length * ROW_H + Math.round(1.5 * ROW_H) + 22;
             const renderLeftRow = (r, i) => {
               const isH = r.time.endsWith(":00");
               const isBr = r.time === "14:00";
