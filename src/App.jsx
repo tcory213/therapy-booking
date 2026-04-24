@@ -901,7 +901,7 @@ function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainS
             const ROW_H = 20; // fixed height for every row in both columns
             const morningRows = printContent.rows.filter(r => toM(r.time) < toM("14:00"));
             // spacer = morning rows height + 1.5 extra rows (visual offset requested)
-            const spacerH = morningRows.length * ROW_H + Math.round(1.5 * ROW_H);
+            const spacerH = morningRows.length * ROW_H + Math.round(1.5 * ROW_H) + 30;
             const renderLeftRow = (r, i) => {
               const isH = r.time.endsWith(":00");
               const isBr = r.time === "14:00";
@@ -909,7 +909,7 @@ function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainS
               const bdTop = isBr ? "2.5px solid #555" : isH ? "1px solid #888" : "1px solid #ddd";
               return (
                 <tr key={i} style={{ borderTop: bdTop }}>
-                  <td style={{ padding: "0 4px", textAlign: "center", fontWeight: isH ? 700 : 400, color: r.type === "closed" ? "rgba(255,255,255,0.5)" : isH ? "#111" : "#555", fontSize: isH ? 12 : 11, background: r.type === "closed" ? "#1A1A1A" : isH ? "#EDEAD8" : "white", borderRight: "1px solid #bbb", whiteSpace: "nowrap", height: ROW_H, lineHeight: `${ROW_H}px` }}>{r.time}</td>
+                  <td style={{ padding: "0 4px", textAlign: "center", fontWeight: isH ? 700 : 400, color: r.type === "closed" ? "rgba(255,255,255,0.5)" : isH ? "#111" : "#555", fontSize: 11, background: r.type === "closed" ? "#1A1A1A" : isH ? "#EDEAD8" : "white", borderRight: "1px solid #bbb", whiteSpace: "nowrap", height: ROW_H, lineHeight: `${ROW_H}px` }}>{r.time}</td>
                   <td style={{ padding: "0 6px", background: bg, height: ROW_H, maxHeight: ROW_H, overflow: "hidden", verticalAlign: "middle" }}>
                     {r.type === "appt" && (
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 4, flexWrap: "nowrap", overflow: "hidden" }}>
@@ -933,7 +933,7 @@ function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainS
               const bdTop = isH ? "1px solid #888" : "1px solid #ddd";
               return (
                 <tr key={i} style={{ borderTop: bdTop }}>
-                  <td style={{ padding: "0 4px", textAlign: "center", fontWeight: isH ? 700 : 400, color: r.type === "closed" ? "rgba(255,255,255,0.5)" : isH ? LU_COLOR : "#555", fontSize: isH ? 12 : 11, background: r.type === "closed" ? "#1A1A1A" : isH ? "#E8F5F0" : "white", borderRight: `1px solid ${LU_COLOR}60`, whiteSpace: "nowrap", height: ROW_H, lineHeight: `${ROW_H}px` }}>{r.time}</td>
+                  <td style={{ padding: "0 4px", textAlign: "center", fontWeight: isH ? 700 : 400, color: r.type === "closed" ? "rgba(255,255,255,0.5)" : isH ? LU_COLOR : "#555", fontSize: 11, background: r.type === "closed" ? "#1A1A1A" : isH ? "#E8F5F0" : "white", borderRight: `1px solid ${LU_COLOR}60`, whiteSpace: "nowrap", height: ROW_H, lineHeight: `${ROW_H}px` }}>{r.time}</td>
                   <td style={{ padding: "0 6px", background: bg, height: ROW_H, maxHeight: ROW_H, overflow: "hidden", verticalAlign: "middle" }}>
                     {r.type === "appt" && (
                       <span style={{ display: "inline-flex", alignItems: "center", gap: 4, flexWrap: "nowrap", overflow: "hidden" }}>
