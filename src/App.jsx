@@ -920,7 +920,7 @@ function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainS
                           <span style={{ color: "#555", fontSize: 10, whiteSpace: "nowrap" }}>{r.chartNum ? `#${r.chartNum}` : r.birthday}</span>
                           <span style={{ fontSize: 10, color: "#444", whiteSpace: "nowrap" }}>{r.duration}分</span>
                           <span style={{ fontSize: 10, color: "#333", background: "#eee", padding: "0 3px", borderRadius: 2, whiteSpace: "nowrap" }}>{r.ttLabel.replace("徒手治療","徒手").replace("體外震波","震波").replace("高能雷射","雷射").replace("震波雷射各半","震雷半")}</span>
-                          <span style={{ fontSize: 10, color: r.onDuty ? "#2E7D6F" : "#C2563A", fontWeight: 600, whiteSpace: "nowrap" }}>{r.onDuty ? "班內" : "班外"}</span>
+                          <span style={{ fontSize: 10, color: r.onDuty ? "#2E7D6F" : "#C2563A", fontWeight: 600, whiteSpace: "nowrap" }}>{r.onDuty ? "內" : "外"}</span>
                           {r.note && <span style={{ fontSize: 10, color: "#888", whiteSpace: "nowrap" }}>（{r.note}）</span>}
                         </>}
                       </span>
