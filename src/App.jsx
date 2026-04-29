@@ -798,12 +798,12 @@ function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainS
       if (starts.length > 0) {
         starts.forEach(a => {
           const th = TH_MAP[a.therapist] || TH_MAP["X"];
-          rows.push({ time, thLabel: thLabel(th), color: th.color, patient: a.patient, chartNum: a.chartNum, birthday: a.birthday, duration: a.duration, ttLabel: getApptTreatLabel(a), type: "appt", isCont: false });
+          rows.push({ time, thLabel: thLabel(th), color: th.color, patient: a.patient, chartNum: a.chartNum, birthday: a.birthday, duration: a.duration, ttLabel: getApptTreatLabel(a), note: a.note, onDuty: a.onDuty, type: "appt", isCont: false });
         });
       } else if (conts.length > 0) {
         conts.forEach(a => {
           const th = TH_MAP[a.therapist] || TH_MAP["X"];
-          rows.push({ time, thLabel: thLabel(th), color: th.color, patient: a.patient, chartNum: a.chartNum, birthday: a.birthday, duration: a.duration, ttLabel: getApptTreatLabel(a), type: "appt", isCont: true });
+          rows.push({ time, thLabel: thLabel(th), color: th.color, patient: a.patient, chartNum: a.chartNum, birthday: a.birthday, duration: a.duration, ttLabel: getApptTreatLabel(a), note: a.note, onDuty: a.onDuty, type: "appt", isCont: true });
         });
       } else {
         rows.push({ time, type: closed ? "closed" : "empty" });
@@ -919,7 +919,9 @@ function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainS
                         {r.isCont ? <span style={{ fontSize: 10, color: "#888" }}>（續）</span> : <>
                           <span style={{ color: "#555", fontSize: 10, whiteSpace: "nowrap" }}>{r.chartNum ? `#${r.chartNum}` : r.birthday}</span>
                           <span style={{ fontSize: 10, color: "#444", whiteSpace: "nowrap" }}>{r.duration}分</span>
-                          <span style={{ fontSize: 10, color: "#333", background: "#eee", padding: "0 3px", borderRadius: 2, whiteSpace: "nowrap" }}>{r.ttLabel}</span>
+                          <span style={{ fontSize: 10, color: "#333", background: "#eee", padding: "0 3px", borderRadius: 2, whiteSpace: "nowrap" }}>{r.ttLabel.replace("徒手治療","徒手").replace("體外震波","震波").replace("高能雷射","雷射").replace("震波雷射各半","震雷半")}</span>
+                          <span style={{ fontSize: 10, color: r.onDuty ? "#2E7D6F" : "#C2563A", fontWeight: 600, whiteSpace: "nowrap" }}>{r.onDuty ? "班內" : "班外"}</span>
+                          {r.note && <span style={{ fontSize: 10, color: "#888", whiteSpace: "nowrap" }}>（{r.note}）</span>}
                         </>}
                       </span>
                     )}
