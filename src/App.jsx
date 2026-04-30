@@ -493,6 +493,10 @@ function AdminDetail({ appt, appts, onClose, onDelete, onUpdate, onAlert, onCopy
   const [note, setNote] = useState(appt.note || "");
   const [reconfirm, setReconfirm] = useState(appt.reconfirm ?? false);
   const [confirmSave, setConfirmSave] = useState(null);
+  const [editPatient, setEditPatient] = useState(appt.patient || "");
+  const [editChartNum, setEditChartNum] = useState(appt.chartNum || "");
+  const [editIdNum, setEditIdNum] = useState(appt.idNum || "");
+  const [editBday, setEditBday] = useState(appt.birthday || "");
   const t = TH_MAP[appt.therapist] || TH_MAP["X"];
   const sel = { padding: "6px 9px", borderRadius: 7, border: "1.5px solid #D4C5A9", fontSize: 12, background: "#FFFDF5", fontFamily: "'Noto Sans TC', sans-serif", outline: "none", cursor: "pointer", width: "100%" };
   const futureDates = useMemo(() => { const d = new Date(appt.date), dow = d.getDay(), y = d.getFullYear(), mo = d.getMonth(); const dim = new Date(y, mo + 1, 0).getDate(), dates = []; for (let day = d.getDate() + 1; day <= dim; day++) { const c = new Date(y, mo, day); if (c.getDay() === dow) dates.push(fd(c)); } return dates; }, [appt.date]);
@@ -501,6 +505,7 @@ function AdminDetail({ appt, appts, onClose, onDelete, onUpdate, onAlert, onCopy
   const toggleEditTreat = (id) => setEditTreats(prev => prev.includes(id) ? prev.filter(t2 => t2 !== id) : [...prev, id]);
 
   const doSave = () => { onUpdate(appt.id, { therapist: th, onDuty, duration: editDur, selfRef, note, reconfirm,
+    patient: editPatient.trim(), chartNum: editChartNum.trim(), idNum: editIdNum.trim(), birthday: editBday.trim(),
     treats: editTreats, manualDur: editTreats.includes("manual") ? editManualDur : 0, swDoses: editTreats.includes("shockwave") ? editSwDoses : 0, laserDoses: editTreats.includes("laser") ? editLaserDoses : 0 }); setEditing(false); };
 
   const save = () => {
@@ -539,6 +544,10 @@ function AdminDetail({ appt, appts, onClose, onDelete, onUpdate, onAlert, onCopy
     </div>}
     {editing && <div style={{ display: "flex", flexDirection: "column", gap: 8, padding: "0 2px" }}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <div><label style={{ fontSize: 11, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>姓名</label><input value={editPatient} onChange={e => setEditPatient(e.target.value)} style={{ ...sel, cursor: "text" }} /></div>
+        <div><label style={{ fontSize: 11, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>病歷號</label><input value={editChartNum} onChange={e => setEditChartNum(e.target.value)} style={{ ...sel, cursor: "text" }} /></div>
+        <div><label style={{ fontSize: 11, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>身分證字號</label><input value={editIdNum} onChange={e => setEditIdNum(e.target.value.toUpperCase())} style={{ ...sel, cursor: "text" }} maxLength={10} /></div>
+        <div><label style={{ fontSize: 11, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>生日（民國六碼）</label><input value={editBday} onChange={e => setEditBday(e.target.value.replace(/\D/g,"").slice(0,6))} style={{ ...sel, cursor: "text" }} maxLength={6} /></div>
         <div><label style={{ fontSize: 11, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>治療師</label><select value={th} onChange={e => setTh(e.target.value)} style={sel}>{[...THERAPISTS.map(t2 => <option key={t2.id} value={t2.id}>{t2.name}</option>), <option key="X" value="X">不指定</option>]}</select></div>
         <div><label style={{ fontSize: 11, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>班內／班外</label><select value={onDuty ? "on" : "off"} onChange={e => setOnDuty(e.target.value === "on")} style={sel}><option value="on">班內</option><option value="off">班外</option></select></div>
         <div><label style={{ fontSize: 11, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>自轉／非自轉</label><select value={selfRef ? "self" : "other"} onChange={e => setSelfRef(e.target.value === "self")} style={sel}><option value="self">自轉</option><option value="other">非自轉</option></select></div>
