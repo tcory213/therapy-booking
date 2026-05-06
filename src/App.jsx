@@ -782,7 +782,7 @@ function AdminWeekGrid({ appts, selDate, onCellClick, onApptClick, filterTh, cs,
   </table></div>);
 }
 
-function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainSlotCfg, setMainSlotCfg, luSlotCfg }) {
+function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainSlotCfg, setMainSlotCfg, luSlotCfg, filterTh, cs }) {
   const ds = fd(selDate); const dayA = useMemo(() => appts.filter(a => a.date === ds), [appts, ds]);
   const getStarts = useCallback(time => dayA.filter(a => a.time === time), [dayA]);
   const getAllAt = useCallback(time => { const m = toM(time); return dayA.filter(a => m >= toM(a.time) && m < toM(a.time) + a.duration); }, [dayA]);
@@ -852,7 +852,11 @@ function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainS
         const k = `${ds}-${time}`;
         const closed = satAft ? mainSlotCfg[k] !== true : mainSlotCfg[k] === false;
         const toggleLabel = satAft ? (mainSlotCfg[k] === true ? "開" : "關") : (mainSlotCfg[k] === false ? "關" : "開");
-        const renderApptRow = (aa, isCont) => { const th = TH_MAP[aa.therapist] || TH_MAP["X"]; return (
+        const fState = filterTh && !occ && !closed ? getPeriodStateAt(filterTh, selDate, time, cs) : null;
+        const fUnavail = filterTh && !occ && !closed && (fState !== "on" && fState !== "off");
+        const fBuf = filterTh && !occ && !closed && fState === "on" && bufferConflict(appts, ds, time, 15, filterTh, null);
+        const filterBlack = filterTh && (occ || closed || fUnavail || fBuf);
+        const renderApptRow = (aa, isCont) => { if (filterTh) return null; const th = TH_MAP[aa.therapist] || TH_MAP["X"]; return (
           <div key={aa.id} onClick={() => onApptClick(aa)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", cursor: "pointer", borderLeft: aa.checkedIn ? "3px solid #FFD700" : isCont ? `3px solid ${th.color}50` : "3px solid transparent", background: isCont ? `${th.color}07` : "transparent" }}>
             <div style={{ width: 22, height: 22, borderRadius: "50%", background: isCont ? `${th.color}90` : th.color, flexShrink: 0, color: "white", fontWeight: 700, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>{thLabel(th)}</div>
             <span style={{ fontWeight: isCont ? 500 : 700, color: isCont ? "#6A5A4A" : "#3D2B1F", fontSize: 14 }}>{aa.patient}</span>
@@ -866,13 +870,14 @@ function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainS
             <span style={{ fontSize: 12, fontWeight: 600, padding: "1px 5px", borderRadius: 3, background: aa.selfRef ? "#EEEEFF" : "#FFF8E6", color: aa.selfRef ? "#5B6ABF" : "#B8860B" }}>{aa.selfRef ? "自轉" : "非自轉"}</span>
             {aa.checkedIn && <span style={{ fontSize: 12, fontWeight: 700, color: "#FFD700" }}>✓到</span>}
           </div>); };
-        return (<tr key={time} style={{ cursor: "pointer", ...(isBr ? { borderTop: "3px solid #C2563A" } : {}) }}><td onClick={() => onCellClick(selDate, time)} style={{ padding: "3px 8px", textAlign: "center", background: isH ? "#F0E8D8" : "#F8F2E6", borderRight: "2px solid #D4C5A9", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", fontWeight: isH ? 700 : 400, color: isH ? "#3D2B1F" : "#8B7355", height: 30 }}>{time}</td>
-          <td style={{ padding: 0, minHeight: 30, borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", background: closed ? "#2A2A2A" : "#FFFDF5" }}>
-            {starts.map(as => renderApptRow(as, false))}
-            {all.filter(aa => aa.time !== time).map(aa => renderApptRow(aa, true))}
-            {!occ && closed && <div style={{ padding: "0 10px", height: 30, display: "flex", alignItems: "center", fontSize: 13, color: "rgba(255,255,255,0.5)" }}>已關閉</div>}
-            {!occ && !closed && <div onClick={() => onCellClick(selDate, time)} style={{ padding: "0 10px", height: 30, display: "flex", alignItems: "center", fontSize: 13, color: "#C4B49A", cursor: "pointer" }}
+        return (<tr key={time} style={{ cursor: "pointer", ...(isBr ? { borderTop: "3px solid #C2563A" } : {}) }}><td onClick={() => !filterBlack && onCellClick(selDate, time)} style={{ padding: "3px 8px", textAlign: "center", background: isH ? "#F0E8D8" : "#F8F2E6", borderRight: "2px solid #D4C5A9", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", fontWeight: isH ? 700 : 400, color: isH ? "#3D2B1F" : "#8B7355", height: 30 }}>{time}</td>
+          <td style={{ padding: 0, minHeight: 30, borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", background: filterBlack ? "#2A2A2A" : closed ? "#2A2A2A" : "#FFFDF5" }}>
+            {!filterBlack && starts.map(as => renderApptRow(as, false))}
+            {!filterBlack && all.filter(aa => aa.time !== time).map(aa => renderApptRow(aa, true))}
+            {!filterBlack && !occ && closed && <div style={{ padding: "0 10px", height: 30, display: "flex", alignItems: "center", fontSize: 13, color: "rgba(255,255,255,0.5)" }}>已關閉</div>}
+            {!filterBlack && !occ && !closed && <div onClick={() => onCellClick(selDate, time)} style={{ padding: "0 10px", height: 30, display: "flex", alignItems: "center", fontSize: 13, color: "#C4B49A", cursor: "pointer" }}
               onMouseEnter={e => e.currentTarget.style.color = "#8B7355"} onMouseLeave={e => e.currentTarget.style.color = "#C4B49A"}>可預約</div>}
+            {filterBlack && <div style={{ height: 30 }} />}
           </td>
           <td style={{ textAlign: "center", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5" }}>
             <button onClick={() => toggleSlot(time)} style={{ padding: "2px 8px", borderRadius: 4, border: "none", cursor: "pointer", background: closed ? "#EDE5D5" : "#3D2B1FDD", color: closed ? "#B5A898" : "white", fontSize: 9, fontWeight: 600, fontFamily: "'Noto Sans TC', sans-serif" }}>{toggleLabel}</button>
@@ -1810,7 +1815,7 @@ export default function App() {
           📋 複製模式：點選任一可預約格即貼上「{copyMode.appt.patient}」
           <button onClick={() => setCopyMode(null)} style={{ marginLeft: "auto", padding: "4px 12px", borderRadius: 5, border: "1px solid rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.15)", color: "white", cursor: "pointer", fontSize: 12 }}>✕ 取消</button>
         </div>}
-        {adminView === "day" ? <AdminDayView appts={appts} luAppts={luAppts} selDate={selDate} onCellClick={(d, t) => {
+        {adminView === "day" ? <AdminDayView appts={appts} luAppts={luAppts} selDate={selDate} filterTh={filterTh} cs={cs} onCellClick={(d, t) => {
           if (copyMode) {
             const { id: _id, date: _date, time: _time, checkedIn: _ci, ...base } = copyMode.appt;
             handleBook({ ...base, date: fd(d), time: t, checkedIn: false });
