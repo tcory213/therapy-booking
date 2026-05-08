@@ -246,6 +246,8 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
   const [laserDoses, setLaserDoses] = useState(1);
   const [selTh, setSelTh] = useState(""); const [selfRef, setSelfRef] = useState(false); const [err, setErr] = useState("");
   const [confirmData, setConfirmData] = useState(null);
+  const [preConfirm, setPreConfirm] = useState(null); // front-end booking preview
+  const [saved, setSaved] = useState(false); // success screen
   const ds = fd(date);
 
   const toggleTreat = (id) => { setSelTreats(prev => prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]); setSelTh(""); setErr(""); };
@@ -301,7 +303,11 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
   const anyAvail = !slotClosed && (availList.some(t => t.available) || (!addExtra && unspecAvail));
   const selInfo = selTh === "X" ? null : availList.find(t => t.id === selTh);
 
-  const finalBook = (data) => { onBook(data); onClose(); };
+  const finalBook = (data) => {
+    onBook(data);
+    if (!isAdmin) { setSaved(true); return; }
+    onClose();
+  };
   const doBook = (data) => { finalBook(data); };
 
   const submit = () => {
@@ -324,6 +330,15 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
       if (selInfo.warn.includes("時段已佔")) warnings.push("此時段已有其他班內治療師");
       if (selInfo.warn.includes("需緩衝")) warnings.push("違反同治療師 15 分鐘緩衝規定");
       setConfirmData({ message: warnings.join("，且") + "，確定仍要預約嗎？", apptData });
+      return;
+    }
+    if (!isAdmin) {
+      // Build preview text
+      const d = date;
+      const wdLabel = ["日","一","二","三","四","五","六"][d.getDay()];
+      const thName = selTh === "X" ? "不指定治療師" : (TH_MAP[selTh]?.name || selTh);
+      const treatLabel = getApptTreatLabel(apptData);
+      setPreConfirm({ apptData, preview: `將為您預約 ${d.getMonth()+1}月${d.getDate()}日（星期${wdLabel}）${time} ${treatLabel} ${thName}` });
       return;
     }
     doBook(apptData);
@@ -414,6 +429,26 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
     {err && <div style={{ color: "#C2563A", fontSize: 11, background: "#FFF0EB", padding: "5px 9px", borderRadius: 5 }}>{err}</div>}
     <button onClick={submit} disabled={!anyAvail && !isAdmin} style={{ padding: 11, borderRadius: 9, border: "none", cursor: (anyAvail || isAdmin) ? "pointer" : "not-allowed", background: (anyAvail || isAdmin) ? "linear-gradient(135deg, #C2563A, #A8432B)" : "#CCBFB0", color: "white", fontSize: 14, fontWeight: 700, fontFamily: "'Noto Sans TC', sans-serif" }}>確認預約</button>
     <ConfirmModal open={!!confirmData} message={confirmData?.message || ""} onOk={() => { doBook(confirmData.apptData); setConfirmData(null); }} onCancel={() => setConfirmData(null)} />
+    {/* Front-end pre-confirm modal */}
+    {preConfirm && !isAdmin && (<div style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div style={{ background: "white", borderRadius: 14, padding: 28, maxWidth: 360, width: "100%", fontFamily: "'Noto Sans TC', sans-serif", boxShadow: "0 16px 48px rgba(0,0,0,0.2)" }}>
+        <div style={{ fontSize: 16, fontWeight: 700, color: "#3D2B1F", marginBottom: 16, lineHeight: 1.6 }}>{preConfirm.preview}</div>
+        <div style={{ fontSize: 13, color: "#8B7355", marginBottom: 20 }}>請確認以上資訊是否正確，確認後將完成預約。</div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => { doBook(preConfirm.apptData); setPreConfirm(null); }} style={{ flex: 1, padding: "12px 0", borderRadius: 9, border: "none", background: "linear-gradient(135deg, #C2563A, #A8432B)", color: "white", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>✓ 確認預約</button>
+          <button onClick={() => setPreConfirm(null)} style={{ flex: 1, padding: "12px 0", borderRadius: 9, border: "1.5px solid #D4C5A9", background: "#FFFDF5", color: "#5A4A3A", fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>返回修改</button>
+        </div>
+      </div>
+    </div>)}
+    {/* Success screen */}
+    {saved && !isAdmin && (<div style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div style={{ background: "white", borderRadius: 14, padding: 32, maxWidth: 340, width: "100%", fontFamily: "'Noto Sans TC', sans-serif", textAlign: "center", boxShadow: "0 16px 48px rgba(0,0,0,0.2)" }}>
+        <div style={{ fontSize: 52, marginBottom: 12 }}>✅</div>
+        <div style={{ fontSize: 18, fontWeight: 700, color: "#2E7D6F", marginBottom: 10 }}>預約完成！</div>
+        <div style={{ fontSize: 13, color: "#5A4A3A", lineHeight: 1.7, marginBottom: 24 }}>請至「查詢及取消」頁面輸入身分證字號，確認預約是否成功。</div>
+        <button onClick={onClose} style={{ width: "100%", padding: "12px 0", borderRadius: 9, border: "none", background: "linear-gradient(135deg, #2E7D6F, #1A5A4A)", color: "white", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>關閉</button>
+      </div>
+    </div>)}
 
   </div>);
 }
