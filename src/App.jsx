@@ -1857,6 +1857,20 @@ export default function App() {
         {adminView === "day" ? <AdminDayView appts={appts} luAppts={luAppts} selDate={selDate} filterTh={filterTh} cs={cs} onCellClick={(d, t) => {
           if (copyMode) {
             const { id: _id, date: _date, time: _time, checkedIn: _ci, ...base } = copyMode.appt;
+            const thId = base.therapist;
+            if (thId && thId !== "X") {
+              // Main appt with specific therapist
+              const st = getPeriodStateAt(thId, d, t, cs);
+              if (st === null) {
+                if (!window.confirm(`⚠️ ${TH_MAP[thId]?.name || thId} 在 ${fd(d)} ${t} 無排班，確定仍要貼上嗎？`)) return;
+              }
+            } else if (copyMode.isLu) {
+              // Lu appt pasted into main schedule → check 盧 (B) shift
+              const st = getPeriodStateAt("B", d, t, cs);
+              if (st === null) {
+                if (!window.confirm(`⚠️ 盧治療師 在 ${fd(d)} ${t} 無排班，確定仍要貼上嗎？`)) return;
+              }
+            }
             handleBook({ ...base, date: fd(d), time: t, checkedIn: false });
             setCopyMode(null);
             setAlertMsg(`✅ 已複製「${copyMode.appt.patient}」到 ${fd(d)} ${t}`);
@@ -1864,6 +1878,18 @@ export default function App() {
         }} onApptClick={a => setAdminDetailModal(a)} mainSlotCfg={mainSlotCfg} setMainSlotCfg={fireSetMainSlotCfg} luSlotCfg={luSlotCfg} /> : <AdminWeekGrid appts={appts} selDate={selDate} onCellClick={(d, t) => {
           if (copyMode) {
             const { id: _id, date: _date, time: _time, checkedIn: _ci, ...base } = copyMode.appt;
+            const thId = base.therapist;
+            if (thId && thId !== "X") {
+              const st = getPeriodStateAt(thId, d, t, cs);
+              if (st === null) {
+                if (!window.confirm(`⚠️ ${TH_MAP[thId]?.name || thId} 在 ${fd(d)} ${t} 無排班，確定仍要貼上嗎？`)) return;
+              }
+            } else if (copyMode.isLu) {
+              const st = getPeriodStateAt("B", d, t, cs);
+              if (st === null) {
+                if (!window.confirm(`⚠️ 盧治療師 在 ${fd(d)} ${t} 無排班，確定仍要貼上嗎？`)) return;
+              }
+            }
             handleBook({ ...base, date: fd(d), time: t, checkedIn: false });
             setCopyMode(null);
             setAlertMsg(`✅ 已複製「${copyMode.appt.patient}」到 ${fd(d)} ${t}`);
