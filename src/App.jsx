@@ -1231,10 +1231,12 @@ function ShiftEditor({ customShifts, setCustomShifts }) {
 function LuAdminDetail({ appt, appts, onClose, onDelete, onUpdate, onAlert, onCopyDates, onStartCopy }) {
   const [editing, setEditing] = useState(false);
   const [dur, setDur] = useState(appt.duration); const [patient, setPatient] = useState(appt.patient); const [bday, setBday] = useState(appt.birthday);
+  const [chartNum, setChartNum] = useState(appt.chartNum || "");
+  const [idNum, setIdNum] = useState(appt.idNum || "");
   const [selfRef, setSelfRef] = useState(appt.selfRef ?? false);
   const sel = { padding: "6px 9px", borderRadius: 7, border: "1.5px solid #D4C5A9", fontSize: 12, background: "#FFFDF5", fontFamily: "'Noto Sans TC', sans-serif", outline: "none", cursor: "pointer", width: "100%" };
 
-  const doSave = () => { onUpdate(appt.id, { duration: dur, patient, birthday: bday, selfRef }); setEditing(false); };
+  const doSave = () => { onUpdate(appt.id, { duration: dur, patient, birthday: bday, chartNum, idNum, selfRef }); setEditing(false); };
   const save = () => {
     if (!patient.trim()) { onAlert("請輸入患者姓名"); return; }
     if (!luValidRange(appt.time, dur)) { onAlert("超出盧獨立時段"); return; }
@@ -1246,7 +1248,7 @@ function LuAdminDetail({ appt, appts, onClose, onDelete, onUpdate, onAlert, onCo
     <div style={{ background: `${LU_COLOR}12`, border: `1.5px solid ${LU_COLOR}40`, borderRadius: 9, padding: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
         <div style={{ width: 28, height: 28, borderRadius: "50%", background: LU_COLOR, color: "white", fontWeight: 700, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center" }}>盧</div>
-        <div><div style={{ fontWeight: 700, color: "#3D2B1F", fontSize: 14 }}>{appt.patient}</div><div style={{ fontSize: 11, color: "#8B7355" }}>生日：{appt.birthday}</div></div>
+        <div><div style={{ fontWeight: 700, color: "#3D2B1F", fontSize: 14 }}>{appt.patient}</div><div style={{ fontSize: 11, color: "#8B7355" }}>{appt.chartNum ? `#${appt.chartNum}` : appt.birthday}</div></div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontSize: 12 }}><div><span style={{ color: "#8B7355" }}>日期：</span>{appt.date}</div><div><span style={{ color: "#8B7355" }}>時間：</span>{appt.time}</div></div>
     </div>
@@ -1258,8 +1260,10 @@ function LuAdminDetail({ appt, appts, onClose, onDelete, onUpdate, onAlert, onCo
     </div>}
 
     {editing && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "0 2px" }}>
-      <div><label style={{ fontSize: 10, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>患者姓名</label><input value={patient} onChange={e => setPatient(e.target.value)} style={{ ...sel, cursor: "text" }} /></div>
-      <div><label style={{ fontSize: 10, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>生日</label><input value={bday} onChange={e => setBday(e.target.value.replace(/\D/g, "").slice(0, 6))} style={{ ...sel, cursor: "text" }} maxLength={6} /></div>
+      <div><label style={{ fontSize: 10, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>姓名</label><input value={patient} onChange={e => setPatient(e.target.value)} style={{ ...sel, cursor: "text" }} /></div>
+      <div><label style={{ fontSize: 10, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>病歷號</label><input value={chartNum} onChange={e => setChartNum(e.target.value)} style={{ ...sel, cursor: "text" }} /></div>
+      <div><label style={{ fontSize: 10, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>生日（民國六碼）</label><input value={bday} onChange={e => setBday(e.target.value.replace(/\D/g,"").slice(0,6))} style={{ ...sel, cursor: "text" }} maxLength={6} /></div>
+      <div><label style={{ fontSize: 10, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>身分證字號</label><input value={idNum} onChange={e => setIdNum(e.target.value.toUpperCase())} style={{ ...sel, cursor: "text" }} maxLength={10} /></div>
       <div><label style={{ fontSize: 10, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>時長</label><select value={String(dur)} onChange={e => setDur(Number(e.target.value))} style={sel}>{DURATIONS.map(d => <option key={d} value={String(d)}>{d} 分鐘</option>)}</select></div>
       <div><label style={{ fontSize: 10, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>自轉／非自轉</label><select value={selfRef ? "self" : "other"} onChange={e => setSelfRef(e.target.value === "self")} style={sel}><option value="self">自轉</option><option value="other">非自轉</option></select></div>
     </div>}
@@ -1867,24 +1871,24 @@ export default function App() {
         }} onApptClick={a => setAdminDetailModal(a)} filterTh={filterTh} cs={cs} mainSlotCfg={mainSlotCfg} />}</>)}
 
       {isAdmin && adminTab === "lu" && (<><NavCtrl selDate={selDate} setSelDate={setSelDate} viewMode={luAdminView} setViewMode={setLuAdminView} showDayView={true} />
-        {copyMode?.isLu && <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", background: LU_COLOR, color: "white", borderRadius: 8, marginBottom: 10, fontSize: 14, fontWeight: 600 }}>
+        {copyMode && <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", background: LU_COLOR, color: "white", borderRadius: 8, marginBottom: 10, fontSize: 14, fontWeight: 600 }}>
           📋 複製模式：點選任一可預約格即貼上「{copyMode.appt.patient}」
           <button onClick={() => setCopyMode(null)} style={{ marginLeft: "auto", padding: "4px 12px", borderRadius: 5, border: "1px solid rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.15)", color: "white", cursor: "pointer", fontSize: 12 }}>✕ 取消</button>
         </div>}
         {luAdminView === "day" ? <LuAdminDayView appts={luAppts} selDate={selDate} onCellClick={(d, t) => {
-          if (copyMode?.isLu) {
-            const { id: _id, date: _date, time: _time, checkedIn: _ci, ...base } = copyMode.appt;
-            handleLuBook({ ...base, date: fd(d), time: t, checkedIn: false });
+          if (copyMode) {
+            const { id: _id, date: _date, time: _time, checkedIn: _ci, therapist: _th, onDuty: _od, treats: _tr, manualDur: _md, swDoses: _sw, laserDoses: _ld, selfRef, patient, birthday, idNum, chartNum } = copyMode.appt;
+            handleLuBook({ date: fd(d), time: t, duration: copyMode.appt.duration || 15, patient, birthday: birthday || "", idNum: idNum || "", chartNum: chartNum || "", selfRef: selfRef || false, checkedIn: false });
             setCopyMode(null);
-            setAlertMsg(`✅ 已複製「${copyMode.appt.patient}」到 ${fd(d)} ${t}`);
+            setAlertMsg(`✅ 已複製「${copyMode.appt.patient}」到盧獨立時段 ${fd(d)} ${t}`);
           } else { setLuBookingModal({ date: d, time: t }); }
         }} onApptClick={a => setLuDetailModal(a)} luSlotCfg={luSlotCfg} setLuSlotCfg={fireSetLuSlotCfg} />
         : <LuAdminWeekGrid appts={luAppts} selDate={selDate} onCellClick={(d, t) => {
-          if (copyMode?.isLu) {
-            const { id: _id, date: _date, time: _time, checkedIn: _ci, ...base } = copyMode.appt;
-            handleLuBook({ ...base, date: fd(d), time: t, checkedIn: false });
+          if (copyMode) {
+            const { selfRef, patient, birthday, idNum, chartNum } = copyMode.appt;
+            handleLuBook({ date: fd(d), time: t, duration: copyMode.appt.duration || 15, patient, birthday: birthday || "", idNum: idNum || "", chartNum: chartNum || "", selfRef: selfRef || false, checkedIn: false });
             setCopyMode(null);
-            setAlertMsg(`✅ 已複製「${copyMode.appt.patient}」到 ${fd(d)} ${t}`);
+            setAlertMsg(`✅ 已複製「${copyMode.appt.patient}」到盧獨立時段 ${fd(d)} ${t}`);
           } else { setLuBookingModal({ date: d, time: t }); }
         }} onApptClick={a => setLuDetailModal(a)} luSlotCfg={luSlotCfg} />}</>)}
 
