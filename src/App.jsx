@@ -1446,7 +1446,7 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
         {y}年{mo}月 薪資統計
       </div>
       <div style={{ padding: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
-        {summaries.filter(s2 => salaryViewer === "all" || s2.id === salaryViewer).map(s2 => (
+        {summaries.filter(s2 => !salaryViewer || salaryViewer === "all" || s2.id === salaryViewer).map(s2 => (
           <div key={s2.id} onClick={() => setSelTh(selTh === s2.id ? null : s2.id)}
             style={{ border: `1.5px solid ${selTh === s2.id ? s2.color : s2.color + "40"}`, borderRadius: 9, padding: 12, background: selTh === s2.id ? `${s2.color}15` : `${s2.color}08`, cursor: "pointer", transition: "all 0.15s" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
@@ -1471,7 +1471,7 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
           </div>
         ))}
         {/* 盧老師 card */}
-        {salaryViewer === "all" && <div onClick={() => setSelTh(selTh === "LU" ? null : "LU")}
+        {(!salaryViewer || salaryViewer === "all") && <div onClick={() => setSelTh(selTh === "LU" ? null : "LU")}
           style={{ border: `1.5px solid ${selTh === "LU" ? LU_COLOR : LU_COLOR + "40"}`, borderRadius: 9, padding: 12, background: selTh === "LU" ? `${LU_COLOR}15` : `${LU_COLOR}08`, cursor: "pointer", transition: "all 0.15s" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
             <div style={{ width: 30, height: 30, borderRadius: "50%", background: LU_COLOR, color: "white", fontWeight: 700, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>盧</div>
