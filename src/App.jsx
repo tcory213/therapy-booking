@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { db } from "./firebase.js";
-import { collection, doc, onSnapshot, addDoc, deleteDoc, updateDoc, setDoc, writeBatch } from "firebase/firestore";
+import { collection, doc, onSnapshot, addDoc, deleteDoc, updateDoc, setDoc, writeBatch, query, where, getDocs } from "firebase/firestore";
 
 /* ═══════════════════════════════════════════ Constants ═══════════════════════════════════════════ */
 const THERAPISTS = [
@@ -1307,13 +1307,14 @@ function calcLuPay(a) {
   return Math.round(calcRevenue(a.duration, "manual") * (a.selfRef ? 0.9 : 0.6));
 }
 
-function SalarySummary({ appts, luAppts, cs }) {
+function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
   const [month, setMonth] = useState(() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}`; });
   const [selTh, setSelTh] = useState(null);
   const [salaryUnlocked, setSalaryUnlocked] = useState(false);
   const [salaryPw, setSalaryPw] = useState("");
   const [salaryPwErr, setSalaryPwErr] = useState(false);
-  const SALARY_PW = "tcory213";
+  const [salaryViewer, setSalaryViewer] = useState(null); // null | "all" | therapist id
+  const SALARY_PWS = { "tcory213": "all", "0128": "C", "1111": "D" };
 
   const [y, mo] = month.split("-").map(Number);
   const monthStart = `${y}-${String(mo).padStart(2, "0")}-01`;
@@ -1423,7 +1424,7 @@ function SalarySummary({ appts, luAppts, cs }) {
   return (<div>
     {/* Month selector */}
     <div style={{ display: "flex", gap: 10, marginBottom: 14, alignItems: "center", flexWrap: "wrap" }}>
-      <input type="month" value={month} onChange={e => { setMonth(e.target.value); setSelTh(null); }}
+      <input type="month" value={month} onChange={e => { setMonth(e.target.value); setSelTh(null); onMonthChange?.(e.target.value); }}
         style={{ padding: "6px 12px", borderRadius: 7, border: "1.5px solid #D4C5A9", fontSize: 14, background: "#FFFDF5", fontFamily: "'Noto Sans TC', sans-serif", outline: "none" }} />
       <span style={{ fontSize: 12, color: "#8B7355" }}>僅計入已報到個案</span>
       <button onClick={exportCSV} style={{ padding: "5px 12px", borderRadius: 6, border: "1.5px solid #2E7D6F", background: "#E6F5EE", color: "#2E7D6F", cursor: "pointer", fontWeight: 600, fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif" }}>⬇ 匯出 CSV</button>
@@ -1431,7 +1432,8 @@ function SalarySummary({ appts, luAppts, cs }) {
         {salaryUnlocked ? (
           <span style={{ fontSize: 11, color: "#2E7D6F", fontWeight: 600 }}>🔓 金額已解鎖 <button onClick={() => setSalaryUnlocked(false)} style={{ marginLeft: 4, padding: "2px 8px", borderRadius: 4, border: "1px solid #D4C5A9", background: "#FFFDF5", color: "#8B7355", cursor: "pointer", fontSize: 10, fontFamily: "'Noto Sans TC', sans-serif" }}>鎖定</button></span>
         ) : (
-          <><input type="password" value={salaryPw} onChange={e => { setSalaryPw(e.target.value); setSalaryPwErr(false); }} onKeyDown={e => { if (e.key === "Enter") { if (salaryPw === SALARY_PW) { setSalaryUnlocked(true); setSalaryPw(""); } else { setSalaryPwErr(true); setSalaryPw(""); } } }} placeholder="輸入管理密碼查看金額" style={{ padding: "5px 10px", borderRadius: 6, border: `1.5px solid ${salaryPwErr ? "#C2563A" : "#D4C5A9"}`, fontSize: 12, background: "#FFFDF5", fontFamily: "'Noto Sans TC', sans-serif", outline: "none", width: 150 }} />
+          <><input type="password" value={salaryPw} onChange={e => { setSalaryPw(e.target.value); setSalaryPwErr(false); }} onKeyDown={e => { if (e.key === "Enter") { const viewer = SALARY_PWS[salaryPw]; if (viewer) { setSalaryUnlocked(true); setSalaryViewer(viewer); setSalaryPw(""); } else { setSalaryPwErr(true); setSalaryPw(""); } } }} placeholder="輸入管理密碼查看金額" style={{ padding: "5px 10px", borderRadius: 6, border: `1.5px solid ${salaryPwErr ? "#C2563A" : "#D4C5A9"}`, fontSize: 12, background: "#FFFDF5", fontFamily: "'Noto Sans TC', sans-serif", outline: "none", width: 150 }} />
+          <button onClick={() => { const viewer = SALARY_PWS[salaryPw]; if (viewer) { setSalaryUnlocked(true); setSalaryViewer(viewer); setSalaryPw(""); } else { setSalaryPwErr(true); setSalaryPw(""); } }} style={{ padding: "5px 10px", borderRadius: 6, border: "none", background: "#3D2B1F", color: "white", cursor: "pointer", fontSize: 12, fontFamily: "'Noto Sans TC', sans-serif" }}>確認</button>
           <button onClick={() => { if (salaryPw === SALARY_PW) { setSalaryUnlocked(true); setSalaryPw(""); } else { setSalaryPwErr(true); setSalaryPw(""); } }} style={{ padding: "5px 12px", borderRadius: 6, border: "none", background: "#3D2B1F", color: "#F5EDDC", cursor: "pointer", fontWeight: 600, fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif" }}>🔓 解鎖</button>
           {salaryPwErr && <span style={{ fontSize: 10, color: "#C2563A" }}>密碼錯誤</span>}</>
         )}
@@ -1444,7 +1446,7 @@ function SalarySummary({ appts, luAppts, cs }) {
         {y}年{mo}月 薪資統計
       </div>
       <div style={{ padding: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
-        {summaries.map(s2 => (
+        {summaries.filter(s2 => salaryViewer === "all" || s2.id === salaryViewer).map(s2 => (
           <div key={s2.id} onClick={() => setSelTh(selTh === s2.id ? null : s2.id)}
             style={{ border: `1.5px solid ${selTh === s2.id ? s2.color : s2.color + "40"}`, borderRadius: 9, padding: 12, background: selTh === s2.id ? `${s2.color}15` : `${s2.color}08`, cursor: "pointer", transition: "all 0.15s" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
@@ -1469,7 +1471,7 @@ function SalarySummary({ appts, luAppts, cs }) {
           </div>
         ))}
         {/* 盧老師 card */}
-        <div onClick={() => setSelTh(selTh === "LU" ? null : "LU")}
+        {salaryViewer === "all" && <div onClick={() => setSelTh(selTh === "LU" ? null : "LU")}
           style={{ border: `1.5px solid ${selTh === "LU" ? LU_COLOR : LU_COLOR + "40"}`, borderRadius: 9, padding: 12, background: selTh === "LU" ? `${LU_COLOR}15` : `${LU_COLOR}08`, cursor: "pointer", transition: "all 0.15s" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
             <div style={{ width: 30, height: 30, borderRadius: "50%", background: LU_COLOR, color: "white", fontWeight: 700, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>盧</div>
@@ -1488,7 +1490,7 @@ function SalarySummary({ appts, luAppts, cs }) {
               </div>
             </div>
           </div>
-        </div>
+        </div>}
       </div>
     </div>
 
@@ -1645,18 +1647,39 @@ export default function App() {
 
   // ── Firestore listeners ──
   const [fireErr, setFireErr] = useState("");
+  // Load range: from 60 days ago to 2 months ahead (covers history needed for salary + future bookings)
+  const getDefaultRange = () => {
+    const from = new Date(); from.setDate(from.getDate() - 60);
+    const to = new Date(); to.setMonth(to.getMonth() + 2); to.setDate(to.getDate() + 1);
+    return { from: fd(from), to: fd(to) };
+  };
+  const [loadRange, setLoadRange] = useState(getDefaultRange);
+
+  const ensureRangeCovers = useCallback((dateStr) => {
+    setLoadRange(prev => {
+      if (dateStr >= prev.from && dateStr <= prev.to) return prev;
+      const from = dateStr < prev.from ? dateStr : prev.from;
+      const to = dateStr > prev.to ? dateStr : prev.to;
+      return { from, to };
+    });
+  }, []);
+
   useEffect(() => {
     const onErr = (e) => { console.error("Firestore listener error:", e); setFireErr("Firestore 連線錯誤：" + e.message); };
-    const unsub1 = onSnapshot(collection(db, "appts"), snap => {
-      console.log("appts loaded:", snap.docs.length);
+    const q1 = query(collection(db, "appts"), where("date", ">=", loadRange.from), where("date", "<=", loadRange.to));
+    const unsub1 = onSnapshot(q1, snap => {
       setAppts(snap.docs.map(d => ({ ...d.data(), id: d.id })));
     }, onErr);
-    const unsub2 = onSnapshot(collection(db, "luAppts"), snap => {
-      console.log("luAppts loaded:", snap.docs.length);
+    const q2 = query(collection(db, "luAppts"), where("date", ">=", loadRange.from), where("date", "<=", loadRange.to));
+    const unsub2 = onSnapshot(q2, snap => {
       setLuAppts(snap.docs.map(d => ({ ...d.data(), id: d.id })));
     }, onErr);
+    return () => { unsub1(); unsub2(); };
+  }, [loadRange]);
+
+  useEffect(() => {
+    const onErr = (e) => { console.error("Firestore listener error:", e); setFireErr("Firestore 連線錯誤：" + e.message); };
     const unsub3 = onSnapshot(doc(db, "config", "shifts"), snap => {
-      console.log("shifts loaded:", snap.exists());
       setCs(snap.exists() ? snap.data() : {});
     }, onErr);
     const unsub4 = onSnapshot(doc(db, "config", "luSlotCfg"), snap => {
@@ -1665,9 +1688,16 @@ export default function App() {
     const unsub5 = onSnapshot(doc(db, "config", "mainSlotCfg"), snap => {
       setMainSlotCfg(snap.exists() ? snap.data() : {});
     }, onErr);
-    return () => { unsub1(); unsub2(); unsub3(); unsub4(); unsub5(); };
+    return () => { unsub3(); unsub4(); unsub5(); };
   }, []);
-  const [selDate, setSelDate] = useState(() => { const now = new Date(); const dow = now.getDay(); if (dow === 6) { now.setDate(now.getDate() + 2); } else if (dow === 0) { now.setDate(now.getDate() + 1); } return now; });
+  const [selDate, setSelDateRaw] = useState(() => { const now = new Date(); const dow = now.getDay(); if (dow === 6) { now.setDate(now.getDate() + 2); } else if (dow === 0) { now.setDate(now.getDate() + 1); } return now; });
+  const setSelDate = useCallback((d) => {
+    const next = typeof d === "function" ? d(selDate) : d;
+    setSelDateRaw(next);
+    // Expand load range to cover 7 days around the selected date
+    const ds = fd(next);
+    ensureRangeCovers(ds);
+  }, [selDate, ensureRangeCovers]);
   const [page, setPage] = useState("front"); // front | admin-gate | admin
   const [frontTab, setFrontTab] = useState("book"); // book | lu | lookup
   const [adminTab, setAdminTab] = useState("schedule"); // schedule | lu | salary | shifts
@@ -1918,7 +1948,7 @@ export default function App() {
           } else { setLuBookingModal({ date: d, time: t }); }
         }} onApptClick={a => setLuDetailModal(a)} luSlotCfg={luSlotCfg} />}</>)}
 
-      {isAdmin && adminTab === "salary" && <SalarySummary appts={appts} luAppts={luAppts} cs={cs} />}
+      {isAdmin && adminTab === "salary" && <SalarySummary appts={appts} luAppts={luAppts} cs={cs} onMonthChange={m => { const [y, mo] = m.split("-").map(Number); ensureRangeCovers(`${y}-${String(mo).padStart(2,"0")}-01`); ensureRangeCovers(`${y}-${String(mo).padStart(2,"0")}-31`); }} />}
       {isAdmin && adminTab === "shifts" && <ShiftEditor customShifts={cs} setCustomShifts={fireSetCs} />}
       {isAdmin && adminTab === "lookup" && <AdminLookup appts={appts} luAppts={luAppts} onApptClick={a => setAdminDetailModal(a)} onLuApptClick={a => setLuDetailModal(a)} />}
     </main>
