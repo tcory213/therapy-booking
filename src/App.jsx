@@ -725,7 +725,7 @@ function FrontWeekGrid({ appts, selDate, onCellClick, mainSlotCfg, filterTh, cs 
     <tbody>{SLOTS.map((time, si) => { const isH = time.endsWith(":00"); const isBr = time === "14:00"; return (<tr key={time} style={{ ...(isBr ? { borderTop: "3px solid #C2563A" } : {}) }}><td style={{ padding: "2px 3px", textAlign: "center", background: isH ? "#F0E8D8" : "#F8F2E6", position: "sticky", left: 0, zIndex: 5, borderRight: "2px solid #D4C5A9", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", fontWeight: isH ? 700 : 400, color: isH ? "#3D2B1F" : "#8B7355", fontSize: isH ? 13 : 12, height: 26 }}>{time}</td>
       {wd.map((date, di) => { const cell = renderMap[`${si}-${di}`]; if (!cell || !cell.render) return null; if (cell.type === "blocked") return (<td key={di} rowSpan={cell.span} style={{ background: "#2A2A2A", color: "rgba(255,255,255,0.75)", textAlign: "center", verticalAlign: "middle", fontSize: 12, borderLeft: "1px solid #2A2A2A", borderTop: "none", padding: "4px 2px" }}>{cell.noShift ? <span>未排班<br />或已占用</span> : cell.span >= 2 ? <span>未開放<br />或已占用</span> : <span>已占用</span>}</td>);
         const dim = cell.dimmed;
-        return (<td key={di} style={{ borderLeft: "1px solid #EDE5D5", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", padding: 0, height: 28, cursor: dim ? "default" : "pointer", background: dim ? "#E8E3D8" : "#FFFDF5", opacity: dim ? 0.65 : 1 }} onClick={() => !dim && onCellClick(date, cell.time)} onMouseEnter={e => { if (!dim) e.currentTarget.style.background = "#F0E0C8"; }} onMouseLeave={e => { if (!dim) e.currentTarget.style.background = "#FFFDF5"; }} />); })}</tr>); })}</tbody>
+        return (<td key={di} style={{ borderLeft: "1px solid #EDE5D5", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", padding: 0, height: 28, cursor: dim ? "default" : "pointer", background: dim ? "#8E8E8E" : "#FFFDF5", opacity: 1 }} onClick={() => !dim && onCellClick(date, cell.time)} onMouseEnter={e => { if (!dim) e.currentTarget.style.background = "#F0E0C8"; }} onMouseLeave={e => { if (!dim) e.currentTarget.style.background = "#FFFDF5"; }} />); })}</tr>); })}</tbody>
   </table></div>);
 }
 
@@ -1715,7 +1715,8 @@ export default function App() {
   const [undoStack, setUndoStack] = useState([]); // [{type, payload}]
   const pushUndo = (entry) => setUndoStack(prev => [entry, ...prev].slice(0, 5));
   const canUndo = undoStack.length > 0;
-  const [copyMode, setCopyMode] = useState(null); // { appt } or null
+  const [copyMode, setCopyMode] = useState(null); // { appt, copyTh } or null
+  const [copyAskModal, setCopyAskModal] = useState(null); // { appt, isLu } pending ask
 
   // ── Main appts handlers ──
   const handleBook = async (appt) => {
@@ -1750,6 +1751,48 @@ export default function App() {
       setAdminDetailModal(prev2 => prev2?.id === id ? { ...prev2, ...ch } : prev2);
     } catch (e) { console.error("update error:", e); setAlertMsg("更新失敗：" + e.message); }
   };
+  // Helper: validate and execute paste
+  const executePaste = useCallback((d, t, targetCollection) => {
+    if (!copyMode) return;
+    const { appt, copyTh, isLu } = copyMode;
+    const { id: _id, date: _date, time: _time, checkedIn: _ci, ...base } = appt;
+    const pasteData = copyTh && !isLu
+      ? { ...base, date: fd(d), time: t, checkedIn: false, onDuty: base.therapist && base.therapist !== "X" ? getPeriodStateAt(base.therapist, d, t, cs) === "on" : true }
+      : copyTh && isLu && targetCollection === "appts"
+        // Lu → main with copyTh: use 盧(B), onDuty from target slot
+        ? { patient: appt.patient, birthday: appt.birthday || "", idNum: appt.idNum || "", chartNum: appt.chartNum || "", selfRef: appt.selfRef || false, date: fd(d), time: t, duration: appt.duration, checkedIn: false, therapist: "B", onDuty: getPeriodStateAt("B", d, t, cs) === "on", treats: ["manual"], manualDur: appt.duration, swDoses: 0, laserDoses: 0 }
+      : { patient: appt.patient, birthday: appt.birthday || "", idNum: appt.idNum || "", chartNum: appt.chartNum || "", selfRef: appt.selfRef || false, date: fd(d), time: t, duration: appt.duration, checkedIn: false,
+          ...(targetCollection === "appts" ? { therapist: "X", onDuty: true, treats: appt.treats || ["manual"], manualDur: appt.manualDur || appt.duration, swDoses: appt.swDoses || 0, laserDoses: appt.laserDoses || 0 } : {}) };
+
+    const doBook = () => {
+      if (targetCollection === "luAppts") { handleLuBook(pasteData); }
+      else { handleBook(pasteData); }
+      setCopyMode(null);
+      setAlertMsg(`✅ 已複製「${appt.patient}」到 ${fd(d)} ${t}`);
+    };
+
+    // Validate therapist shift if copyTh and has specific therapist
+    if (copyTh) {
+      const thId = base.therapist;
+      // Check therapist shift
+      if (thId && thId !== "X" && targetCollection === "appts") {
+        const st = getPeriodStateAt(thId, d, t, cs);
+        if (st === null) {
+          if (!window.confirm(`⚠️ ${TH_MAP[thId]?.name || thId} 在 ${fd(d)} ${t} 無排班，確定仍要貼上嗎？`)) return;
+        }
+      }
+      // Lu copy to main: check 盧(B) shift, but skip onDuty mismatch (Lu = always 班外, but paste can go to either)
+      if (isLu && targetCollection === "appts") {
+        const st = getPeriodStateAt("B", d, t, cs);
+        if (st === null) {
+          if (!window.confirm(`⚠️ 盧治療師 在 ${fd(d)} ${t} 無排班，確定仍要貼上嗎？`)) return;
+        }
+        // No onDuty mismatch check for Lu source
+      }
+    }
+    doBook();
+  }, [copyMode, cs, handleBook, handleLuBook]);
+
   const handleUndo = async () => {
     if (!undoStack.length) return;
     const [entry, ...rest] = undoStack;
@@ -1871,7 +1914,7 @@ export default function App() {
             <div><span style={{ color: "#C2563A", fontWeight: 700 }}>5.</span> 如果臨時無法前來，請記得於一天前完成線上取消。若多次未到且未取消，為了維護其他患者的權益，系統可能會暫停您的預約功能，謝謝您的配合與體諒。</div>
           </div>
         </div>
-        <NavCtrl selDate={selDate} setSelDate={setSelDate} viewMode="week" setViewMode={() => {}} showDayView={false} /><div style={{ display: "flex", gap: 10, marginBottom: 10, padding: "7px 12px", background: "#FFFDF5", borderRadius: 7, border: "1px solid #E0D5C1", fontSize: 14, flexWrap: "wrap" }}>{window.innerWidth >= 600 && <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ display: "inline-block", width: 16, height: 12, borderRadius: 2, background: "#2A2A2A" }} /><span>未開放或已占用</span></span>}{window.innerWidth >= 600 && <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ display: "inline-block", width: 16, height: 12, borderRadius: 2, background: "#FFFDF5", border: "1px solid #D4C5A9" }} /><span>可預約（點擊）</span></span>}{filterTh && <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ display: "inline-block", width: 16, height: 12, borderRadius: 2, background: "#E8E3D8", opacity: 0.65 }} /><span>無班或須緩衝</span></span>}</div><ThFilterBar filterTh={filterTh} setFilterTh={setFilterTh} showNames onLuClick={() => setLuChoiceModal(true)} /><FrontWeekGrid appts={appts} selDate={selDate} onCellClick={(d, t) => setBookingModal({ date: d, time: t })} mainSlotCfg={mainSlotCfg} filterTh={filterTh} cs={cs} /></>)}
+        <NavCtrl selDate={selDate} setSelDate={setSelDate} viewMode="week" setViewMode={() => {}} showDayView={false} /><div style={{ display: "flex", gap: 10, marginBottom: 10, padding: "7px 12px", background: "#FFFDF5", borderRadius: 7, border: "1px solid #E0D5C1", fontSize: 14, flexWrap: "wrap" }}>{window.innerWidth >= 600 && <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ display: "inline-block", width: 16, height: 12, borderRadius: 2, background: "#2A2A2A" }} /><span>未開放或已占用</span></span>}{window.innerWidth >= 600 && <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ display: "inline-block", width: 16, height: 12, borderRadius: 2, background: "#FFFDF5", border: "1px solid #D4C5A9" }} /><span>可預約（點擊）</span></span>}{filterTh && <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ display: "inline-block", width: 16, height: 12, borderRadius: 2, background: "#8E8E8E" }} /><span>無班或須緩衝</span></span>}</div><ThFilterBar filterTh={filterTh} setFilterTh={setFilterTh} showNames onLuClick={() => setLuChoiceModal(true)} /><FrontWeekGrid appts={appts} selDate={selDate} onCellClick={(d, t) => setBookingModal({ date: d, time: t })} mainSlotCfg={mainSlotCfg} filterTh={filterTh} cs={cs} /></>)}
 
       {page === "front" && frontTab === "lu" && (<><NavCtrl selDate={selDate} setSelDate={setSelDate} viewMode="week" setViewMode={() => {}} showDayView={false} /><div style={{ display: "flex", gap: 10, marginBottom: 10, padding: "7px 12px", background: "#F8FDFB", borderRadius: 7, border: `1px solid ${LU_COLOR}30`, fontSize: 14, alignItems: "center" }}><span style={{ fontWeight: 700, color: LU_COLOR }}>盧獨立時段</span><span style={{ color: "#8B7355" }}>14:00 - 20:45</span></div><LuFrontWeekGrid appts={luAppts} selDate={selDate} onCellClick={(d, t) => setLuBookingModal({ date: d, time: t })} luSlotCfg={luSlotCfg} /></>)}
 
@@ -1885,45 +1928,11 @@ export default function App() {
           <button onClick={() => setCopyMode(null)} style={{ marginLeft: "auto", padding: "4px 12px", borderRadius: 5, border: "1px solid rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.15)", color: "white", cursor: "pointer", fontSize: 12 }}>✕ 取消</button>
         </div>}
         {adminView === "day" ? <AdminDayView appts={appts} luAppts={luAppts} selDate={selDate} filterTh={filterTh} cs={cs} onCellClick={(d, t) => {
-          if (copyMode) {
-            const { id: _id, date: _date, time: _time, checkedIn: _ci, ...base } = copyMode.appt;
-            const thId = base.therapist;
-            if (thId && thId !== "X") {
-              // Main appt with specific therapist
-              const st = getPeriodStateAt(thId, d, t, cs);
-              if (st === null) {
-                if (!window.confirm(`⚠️ ${TH_MAP[thId]?.name || thId} 在 ${fd(d)} ${t} 無排班，確定仍要貼上嗎？`)) return;
-              }
-            } else if (copyMode.isLu) {
-              // Lu appt pasted into main schedule → check 盧 (B) shift
-              const st = getPeriodStateAt("B", d, t, cs);
-              if (st === null) {
-                if (!window.confirm(`⚠️ 盧治療師 在 ${fd(d)} ${t} 無排班，確定仍要貼上嗎？`)) return;
-              }
-            }
-            handleBook({ ...base, date: fd(d), time: t, checkedIn: false });
-            setCopyMode(null);
-            setAlertMsg(`✅ 已複製「${copyMode.appt.patient}」到 ${fd(d)} ${t}`);
-          } else { setBookingModal({ date: d, time: t }); }
+          if (copyMode) { executePaste(d, t, "appts"); }
+          else { setBookingModal({ date: d, time: t }); }
         }} onApptClick={a => setAdminDetailModal(a)} mainSlotCfg={mainSlotCfg} setMainSlotCfg={fireSetMainSlotCfg} luSlotCfg={luSlotCfg} /> : <AdminWeekGrid appts={appts} selDate={selDate} onCellClick={(d, t) => {
-          if (copyMode) {
-            const { id: _id, date: _date, time: _time, checkedIn: _ci, ...base } = copyMode.appt;
-            const thId = base.therapist;
-            if (thId && thId !== "X") {
-              const st = getPeriodStateAt(thId, d, t, cs);
-              if (st === null) {
-                if (!window.confirm(`⚠️ ${TH_MAP[thId]?.name || thId} 在 ${fd(d)} ${t} 無排班，確定仍要貼上嗎？`)) return;
-              }
-            } else if (copyMode.isLu) {
-              const st = getPeriodStateAt("B", d, t, cs);
-              if (st === null) {
-                if (!window.confirm(`⚠️ 盧治療師 在 ${fd(d)} ${t} 無排班，確定仍要貼上嗎？`)) return;
-              }
-            }
-            handleBook({ ...base, date: fd(d), time: t, checkedIn: false });
-            setCopyMode(null);
-            setAlertMsg(`✅ 已複製「${copyMode.appt.patient}」到 ${fd(d)} ${t}`);
-          } else { setBookingModal({ date: d, time: t }); }
+          if (copyMode) { executePaste(d, t, "appts"); }
+          else { setBookingModal({ date: d, time: t }); }
         }} onApptClick={a => setAdminDetailModal(a)} filterTh={filterTh} cs={cs} mainSlotCfg={mainSlotCfg} />}</>)}
 
       {isAdmin && adminTab === "lu" && (<><NavCtrl selDate={selDate} setSelDate={setSelDate} viewMode={luAdminView} setViewMode={setLuAdminView} showDayView={true} />
@@ -1932,20 +1941,12 @@ export default function App() {
           <button onClick={() => setCopyMode(null)} style={{ marginLeft: "auto", padding: "4px 12px", borderRadius: 5, border: "1px solid rgba(255,255,255,0.4)", background: "rgba(255,255,255,0.15)", color: "white", cursor: "pointer", fontSize: 12 }}>✕ 取消</button>
         </div>}
         {luAdminView === "day" ? <LuAdminDayView appts={luAppts} selDate={selDate} onCellClick={(d, t) => {
-          if (copyMode) {
-            const { id: _id, date: _date, time: _time, checkedIn: _ci, therapist: _th, onDuty: _od, treats: _tr, manualDur: _md, swDoses: _sw, laserDoses: _ld, selfRef, patient, birthday, idNum, chartNum } = copyMode.appt;
-            handleLuBook({ date: fd(d), time: t, duration: copyMode.appt.duration || 15, patient, birthday: birthday || "", idNum: idNum || "", chartNum: chartNum || "", selfRef: selfRef || false, checkedIn: false });
-            setCopyMode(null);
-            setAlertMsg(`✅ 已複製「${copyMode.appt.patient}」到盧獨立時段 ${fd(d)} ${t}`);
-          } else { setLuBookingModal({ date: d, time: t }); }
+          if (copyMode) { executePaste(d, t, "luAppts"); }
+          else { setLuBookingModal({ date: d, time: t }); }
         }} onApptClick={a => setLuDetailModal(a)} luSlotCfg={luSlotCfg} setLuSlotCfg={fireSetLuSlotCfg} />
         : <LuAdminWeekGrid appts={luAppts} selDate={selDate} onCellClick={(d, t) => {
-          if (copyMode) {
-            const { selfRef, patient, birthday, idNum, chartNum } = copyMode.appt;
-            handleLuBook({ date: fd(d), time: t, duration: copyMode.appt.duration || 15, patient, birthday: birthday || "", idNum: idNum || "", chartNum: chartNum || "", selfRef: selfRef || false, checkedIn: false });
-            setCopyMode(null);
-            setAlertMsg(`✅ 已複製「${copyMode.appt.patient}」到盧獨立時段 ${fd(d)} ${t}`);
-          } else { setLuBookingModal({ date: d, time: t }); }
+          if (copyMode) { executePaste(d, t, "luAppts"); }
+          else { setLuBookingModal({ date: d, time: t }); }
         }} onApptClick={a => setLuDetailModal(a)} luSlotCfg={luSlotCfg} />}</>)}
 
       {isAdmin && adminTab === "salary" && <SalarySummary appts={appts} luAppts={luAppts} cs={cs} onMonthChange={m => { const [y, mo] = m.split("-").map(Number); ensureRangeCovers(`${y}-${String(mo).padStart(2,"0")}-01`); ensureRangeCovers(`${y}-${String(mo).padStart(2,"0")}-31`); }} />}
@@ -1956,9 +1957,36 @@ export default function App() {
     {/* ── MODALS ── */}
     <Modal open={!!bookingModal} onClose={() => setBookingModal(null)} title={bookingModal?.addExtra ? "外加預約" : "新增預約"}>{bookingModal && <BookingForm date={bookingModal.date} time={bookingModal.time} appts={appts} onBook={handleBook} onClose={() => setBookingModal(null)} isAdmin={isAdmin} cs={cs} mainSlotCfg={mainSlotCfg} addExtra={bookingModal.addExtra} />}</Modal>
     <Modal open={!!luBookingModal} onClose={() => setLuBookingModal(null)} title="盧獨立時段預約">{luBookingModal && <LuBookingForm date={luBookingModal.date} time={luBookingModal.time} appts={luAppts} onBook={handleLuBook} onClose={() => setLuBookingModal(null)} isAdmin={isAdmin} luSlotCfg={luSlotCfg} />}</Modal>
-    <Modal open={!!adminDetailModal} onClose={() => setAdminDetailModal(null)} title="預約管理">{adminDetailModal && <AdminDetail appt={adminDetailModal} appts={appts} onClose={() => setAdminDetailModal(null)} onDelete={handleDelete} onUpdate={handleUpdate} onAlert={setAlertMsg} onCopyDates={handleCopyDates} onStartCopy={a => { setCopyMode({ appt: a }); setAdminDetailModal(null); setAdminTab("schedule"); setAlertMsg("📋 複製模式：請點選任一可預約格"); }} onAddExtra={(a) => { setAdminDetailModal(null); setBookingModal({ date: new Date(a.date), time: a.time, addExtra: true }); }} />}</Modal>
-    <Modal open={!!luDetailModal} onClose={() => setLuDetailModal(null)} title="盧獨立時段預約管理">{luDetailModal && <LuAdminDetail appt={luDetailModal} appts={luAppts} onClose={() => setLuDetailModal(null)} onDelete={handleLuDelete} onUpdate={handleLuUpdate} onAlert={setAlertMsg} onCopyDates={handleLuCopyDates} onStartCopy={a => { setCopyMode({ appt: a, isLu: true }); setLuDetailModal(null); setAdminTab("lu"); setAlertMsg("📋 複製模式（盧獨立）：請點選任一可預約格"); }} />}</Modal>
+    <Modal open={!!adminDetailModal} onClose={() => setAdminDetailModal(null)} title="預約管理">{adminDetailModal && <AdminDetail appt={adminDetailModal} appts={appts} onClose={() => setAdminDetailModal(null)} onDelete={handleDelete} onUpdate={handleUpdate} onAlert={setAlertMsg} onCopyDates={handleCopyDates} onStartCopy={a => { setCopyAskModal({ appt: a, isLu: false }); setAdminDetailModal(null); }} onAddExtra={(a) => { setAdminDetailModal(null); setBookingModal({ date: new Date(a.date), time: a.time, addExtra: true }); }} />}</Modal>
+    <Modal open={!!luDetailModal} onClose={() => setLuDetailModal(null)} title="盧獨立時段預約管理">{luDetailModal && <LuAdminDetail appt={luDetailModal} appts={luAppts} onClose={() => setLuDetailModal(null)} onDelete={handleLuDelete} onUpdate={handleLuUpdate} onAlert={setAlertMsg} onCopyDates={handleLuCopyDates} onStartCopy={a => { setCopyAskModal({ appt: a, isLu: true }); setLuDetailModal(null); }} />}</Modal>
     <AlertModal open={!!alertMsg} message={alertMsg} onClose={() => setAlertMsg("")} />
+    {/* Copy ask: copy therapist info? */}
+    <Modal open={!!copyAskModal} onClose={() => setCopyAskModal(null)} title="複製選項">
+      {copyAskModal && <div style={{ display: "flex", flexDirection: "column", gap: 12, padding: "4px 0" }}>
+        <div style={{ fontSize: 14, color: "#3D2B1F", lineHeight: 1.7 }}>
+          複製「<strong>{copyAskModal.appt.patient}</strong>」時，是否一併複製治療師及班別設定？
+        </div>
+        <button onClick={() => {
+          const isLu = copyAskModal.isLu;
+          setCopyMode({ appt: copyAskModal.appt, isLu, copyTh: true });
+          setAdminTab(isLu ? "lu" : "schedule");
+          setAlertMsg("📋 複製模式（含治療師）：點選目標格貼上");
+          setCopyAskModal(null);
+        }} style={{ padding: "11px 0", borderRadius: 8, border: "1.5px solid #5B6ABF", background: "#EEEEFF", color: "#5B6ABF", cursor: "pointer", fontWeight: 700, fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}>
+          ✅ 是，連同治療師一起複製
+        </button>
+        <button onClick={() => {
+          const isLu = copyAskModal.isLu;
+          setCopyMode({ appt: copyAskModal.appt, isLu, copyTh: false });
+          setAdminTab(isLu ? "lu" : "schedule");
+          setAlertMsg("📋 複製模式（僅患者資料）：點選目標格貼上");
+          setCopyAskModal(null);
+        }} style={{ padding: "11px 0", borderRadius: 8, border: "1.5px solid #D4C5A9", background: "#FFFDF5", color: "#5A4A3A", cursor: "pointer", fontWeight: 600, fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}>
+          👤 否，只複製患者資料
+        </button>
+        <button onClick={() => setCopyAskModal(null)} style={{ padding: "8px 0", borderRadius: 8, border: "none", background: "transparent", color: "#B5A898", cursor: "pointer", fontSize: 13 }}>取消</button>
+      </div>}
+    </Modal>
     {/* Lu morning/afternoon choice */}
     <Modal open={luChoiceModal} onClose={() => setLuChoiceModal(false)} title="請問想預約盧老師上午或午後時段？">
       <div style={{ display: "flex", flexDirection: "column", gap: 10, padding: "10px 0" }}>
