@@ -1691,13 +1691,13 @@ export default function App() {
     return () => { unsub3(); unsub4(); unsub5(); };
   }, []);
   const [selDate, setSelDateRaw] = useState(() => { const now = new Date(); const dow = now.getDay(); if (dow === 6) { now.setDate(now.getDate() + 2); } else if (dow === 0) { now.setDate(now.getDate() + 1); } return now; });
+  const selDateRef = useRef(selDate);
+  useEffect(() => { selDateRef.current = selDate; }, [selDate]);
   const setSelDate = useCallback((d) => {
-    const next = typeof d === "function" ? d(selDate) : d;
+    const next = typeof d === "function" ? d(selDateRef.current) : d;
     setSelDateRaw(next);
-    // Expand load range to cover 7 days around the selected date
-    const ds = fd(next);
-    ensureRangeCovers(ds);
-  }, [selDate, ensureRangeCovers]);
+    ensureRangeCovers(fd(next));
+  }, [ensureRangeCovers]);
   const [page, setPage] = useState("front"); // front | admin-gate | admin
   const [frontTab, setFrontTab] = useState("book"); // book | lu | lookup
   const [adminTab, setAdminTab] = useState("schedule"); // schedule | lu | salary | shifts
@@ -1791,7 +1791,7 @@ export default function App() {
       }
     }
     doBook();
-  }, [copyMode, cs, handleBook, handleLuBook]);
+  }, [copyMode, cs]);
 
   const handleUndo = async () => {
     if (!undoStack.length) return;
