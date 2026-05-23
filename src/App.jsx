@@ -457,6 +457,7 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
 function LuBookingForm({ date, time, appts, onBook, onClose, isAdmin, luSlotCfg }) {
   const [patient, setPatient] = useState(""); const [bday, setBday] = useState(""); const [idNum, setIdNum] = useState("");
   const [chartNum, setChartNum] = useState("");
+  const [note, setNote] = useState("");
   const [dur, setDur] = useState(15);
   const [selfRef, setSelfRef] = useState(false);
   const [err, setErr] = useState(""); const [confirmBuf, setConfirmBuf] = useState(null);
@@ -484,7 +485,7 @@ function LuBookingForm({ date, time, appts, onBook, onClose, isAdmin, luSlotCfg 
     if (!isAdmin && (!bday.trim() || bday.length !== 6)) { setErr("請輸入民國年月日六碼"); return; }
     if (!isAdmin && !idNum.trim()) { setErr("請輸入身分證字號"); return; }
     if (!luValidRange(time, dur)) { setErr("超出盧獨立時段"); return; }
-    finalBook({ id: Date.now(), date: ds, time, duration: dur, patient: patient.trim(), birthday: bday.trim(), idNum: idNum.trim(), chartNum: chartNum.trim(), selfRef });
+    finalBook({ id: Date.now(), date: ds, time, duration: dur, patient: patient.trim(), birthday: bday.trim(), idNum: idNum.trim(), chartNum: chartNum.trim(), selfRef, note: note.trim() });
   };
   const submit = () => {
     if (!patient.trim()) { setErr("請輸入患者姓名"); return; }
@@ -508,6 +509,7 @@ function LuBookingForm({ date, time, appts, onBook, onClose, isAdmin, luSlotCfg 
     <div><label style={aLbl}>身分證字號 {isAdmin ? "（選填）" : "*"}</label><input value={idNum} onChange={e => setIdNum(e.target.value.toUpperCase())} style={aInp} placeholder={isAdmin ? "（後台選填）" : "請輸入身分證字號"} maxLength={10} /></div>
     <div><label style={aLbl}>治療時長</label><div style={{ display: "flex", gap: 5 }}>{DURATIONS.map(d => (<button key={d} onClick={() => { setDur(d); setErr(""); }} style={{ flex: 1, padding: "7px 0", borderRadius: 7, cursor: "pointer", fontSize: fs.btn, border: dur === d ? `2px solid ${LU_COLOR}` : "1.5px solid #D4C5A9", background: dur === d ? "#E8F5F0" : "#FFFDF5", color: dur === d ? LU_COLOR : "#5A4A3A", fontWeight: dur === d ? 700 : 500, fontFamily: "'Noto Sans TC', sans-serif" }}>{d} 分</button>))}</div></div>
     {isAdmin && <div><label style={aLbl}>自轉／非自轉</label><div style={{ display: "flex", gap: 5 }}>{[{ v: true, l: "自轉" }, { v: false, l: "非自轉" }].map(o => (<button key={String(o.v)} onClick={() => setSelfRef(o.v)} style={{ flex: 1, padding: "7px 0", borderRadius: 7, cursor: "pointer", fontSize: fs.btn, border: selfRef === o.v ? `2px solid ${LU_COLOR}` : "1.5px solid #D4C5A9", background: selfRef === o.v ? "#E8F5F0" : "#FFFDF5", color: selfRef === o.v ? LU_COLOR : "#5A4A3A", fontWeight: selfRef === o.v ? 700 : 500, fontFamily: "'Noto Sans TC', sans-serif" }}>{o.l}</button>))}</div></div>}
+    {isAdmin && <div><label style={aLbl}>附註（選填）</label><input value={note} onChange={e => setNote(e.target.value)} style={{ ...aInp, width: "100%", boxSizing: "border-box" }} placeholder="可填寫特殊需求或備忘" /></div>}
     {occupied && <div style={{ padding: 8, background: "#FFF5F2", borderRadius: 7, fontSize: fs.err, color: "#C2563A", border: "1px solid #E8C8C0" }}>此時段已有預約</div>}
     {!occupied && !allOpen && !isAdmin && <div style={{ padding: 8, background: "#FFF5F2", borderRadius: 7, fontSize: fs.err, color: "#C2563A", border: "1px solid #E8C8C0" }}>此時段未開放</div>}
     {!occupied && hasBuf && !isAdmin && <div style={{ padding: 8, background: "#FFF8E6", borderRadius: 7, fontSize: fs.err, color: "#B8860B", border: "1px solid #E8DCC0" }}>此時段需間隔緩衝</div>}
@@ -1233,10 +1235,11 @@ function LuAdminDetail({ appt, appts, onClose, onDelete, onUpdate, onAlert, onCo
   const [dur, setDur] = useState(appt.duration); const [patient, setPatient] = useState(appt.patient); const [bday, setBday] = useState(appt.birthday);
   const [chartNum, setChartNum] = useState(appt.chartNum || "");
   const [idNum, setIdNum] = useState(appt.idNum || "");
+  const [note, setNote] = useState(appt.note || "");
   const [selfRef, setSelfRef] = useState(appt.selfRef ?? false);
   const sel = { padding: "6px 9px", borderRadius: 7, border: "1.5px solid #D4C5A9", fontSize: 12, background: "#FFFDF5", fontFamily: "'Noto Sans TC', sans-serif", outline: "none", cursor: "pointer", width: "100%" };
 
-  const doSave = () => { onUpdate(appt.id, { duration: dur, patient, birthday: bday, chartNum, idNum, selfRef }); setEditing(false); };
+  const doSave = () => { onUpdate(appt.id, { duration: dur, patient, birthday: bday, chartNum, idNum, selfRef, note }); setEditing(false); };
   const save = () => {
     if (!patient.trim()) { onAlert("請輸入患者姓名"); return; }
     if (!luValidRange(appt.time, dur)) { onAlert("超出盧獨立時段"); return; }
@@ -1257,6 +1260,7 @@ function LuAdminDetail({ appt, appts, onClose, onDelete, onUpdate, onAlert, onCo
       <div><span style={{ color: "#8B7355" }}>時長：</span><strong>{appt.duration} 分</strong></div>
       <div><span style={{ color: "#8B7355" }}>轉介：</span><strong style={{ color: appt.selfRef ? "#5B6ABF" : "#B8860B" }}>{appt.selfRef ? "自轉" : "非自轉"}</strong></div>
       <div><span style={{ color: "#8B7355" }}>報到：</span><strong style={{ color: appt.checkedIn ? "#2E7D6F" : "#B5A898" }}>{appt.checkedIn ? "已報到" : "未報到"}</strong></div>
+      {appt.note && <div style={{ gridColumn: "1 / -1" }}><span style={{ color: "#8B7355" }}>附註：</span>{appt.note}</div>}
     </div>}
 
     {editing && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "0 2px" }}>
@@ -1266,6 +1270,7 @@ function LuAdminDetail({ appt, appts, onClose, onDelete, onUpdate, onAlert, onCo
       <div><label style={{ fontSize: 10, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>身分證字號</label><input value={idNum} onChange={e => setIdNum(e.target.value.toUpperCase())} style={{ ...sel, cursor: "text" }} maxLength={10} /></div>
       <div><label style={{ fontSize: 10, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>時長</label><select value={String(dur)} onChange={e => setDur(Number(e.target.value))} style={sel}>{DURATIONS.map(d => <option key={d} value={String(d)}>{d} 分鐘</option>)}</select></div>
       <div><label style={{ fontSize: 10, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>自轉／非自轉</label><select value={selfRef ? "self" : "other"} onChange={e => setSelfRef(e.target.value === "self")} style={sel}><option value="self">自轉</option><option value="other">非自轉</option></select></div>
+      <div style={{ gridColumn: "1 / -1" }}><label style={{ fontSize: 10, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>附註</label><input value={note} onChange={e => setNote(e.target.value)} style={{ ...sel, cursor: "text" }} placeholder="可填寫特殊需求或備忘" /></div>
     </div>}
 
     {!editing && <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
