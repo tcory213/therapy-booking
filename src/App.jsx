@@ -240,6 +240,7 @@ const actionBtn = { flex: 1, padding: 9, borderRadius: 7, cursor: "pointer", fon
 function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlotCfg, addExtra }) {
   const [patient, setPatient] = useState(""); const [bday, setBday] = useState(""); const [idNum, setIdNum] = useState("");
   const [chartNum, setChartNum] = useState("");
+  const [note, setNote] = useState("");
   const [selTreats, setSelTreats] = useState([]);
   const [manualDur, setManualDur] = useState(15);
   const [swDoses, setSwDoses] = useState(1);
@@ -321,7 +322,7 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
     const isUnspecified = selTh === "X";
     const onDuty = isUnspecified ? true : !selInfo?.isOff;
     if (onDuty && overOnDutyLimit && !isAdmin) { setErr("班內治療最多占用 2 格（30 分鐘）"); return; }
-    const apptData = { id: Date.now(), date: ds, time, duration: totalDur, therapist: selTh, patient: patient.trim(), birthday: bday.trim(), idNum: idNum.trim(), chartNum: chartNum.trim(), onDuty, selfRef,
+    const apptData = { id: Date.now(), date: ds, time, duration: totalDur, therapist: selTh, patient: patient.trim(), birthday: bday.trim(), idNum: idNum.trim(), chartNum: chartNum.trim(), onDuty, selfRef, note: note.trim(),
       treats: selTreats, manualDur: selTreats.includes("manual") ? manualDur : 0, swDoses: selTreats.includes("shockwave") ? swDoses : 0, laserDoses: selTreats.includes("laser") ? laserDoses : 0 };
 
     if (isAdmin && !isUnspecified && selInfo?.adminOverride) {
@@ -426,6 +427,7 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
     </div>
 
     {isAdmin && <div><label style={lbl}>自轉／非自轉</label><div style={{ display: "flex", gap: 5 }}>{[{ v: true, l: "自轉" }, { v: false, l: "非自轉" }].map(o => (<button key={String(o.v)} onClick={() => setSelfRef(o.v)} style={{ flex: 1, padding: "7px 0", borderRadius: 7, cursor: "pointer", fontSize: 12, border: selfRef === o.v ? "2px solid #5B6ABF" : "1.5px solid #D4C5A9", background: selfRef === o.v ? "#EEEEFF" : "#FFFDF5", color: selfRef === o.v ? "#5B6ABF" : "#5A4A3A", fontWeight: selfRef === o.v ? 700 : 500, fontFamily: "'Noto Sans TC', sans-serif" }}>{o.l}</button>))}</div></div>}
+    {isAdmin && <div><label style={lbl}>附註（選填）</label><input value={note} onChange={e => setNote(e.target.value)} style={inp} placeholder="可填寫特殊需求或備忘" /></div>}
     {err && <div style={{ color: "#C2563A", fontSize: 11, background: "#FFF0EB", padding: "5px 9px", borderRadius: 5 }}>{err}</div>}
     <button onClick={submit} disabled={!anyAvail && !isAdmin} style={{ padding: 11, borderRadius: 9, border: "none", cursor: (anyAvail || isAdmin) ? "pointer" : "not-allowed", background: (anyAvail || isAdmin) ? "linear-gradient(135deg, #C2563A, #A8432B)" : "#CCBFB0", color: "white", fontSize: 14, fontWeight: 700, fontFamily: "'Noto Sans TC', sans-serif" }}>確認預約</button>
     <ConfirmModal open={!!confirmData} message={confirmData?.message || ""} onOk={() => { doBook(confirmData.apptData); setConfirmData(null); }} onCancel={() => setConfirmData(null)} />
@@ -492,7 +494,7 @@ function LuBookingForm({ date, time, appts, onBook, onClose, isAdmin, luSlotCfg 
     if (isAdmin && !chartNum.trim()) { setErr("請輸入病歷號"); return; }
     if (!isAdmin && (!bday.trim() || bday.length !== 6)) { setErr("請輸入民國年月日六碼"); return; }
     if (!isAdmin && !idNum.trim()) { setErr("請輸入身分證字號"); return; }
-    if (isAdmin && hasBuf && !occupied) { setConfirmBuf({ patient: patient.trim(), birthday: bday.trim(), idNum: idNum.trim(), chartNum: chartNum.trim() }); return; }
+    if (isAdmin && hasBuf && !occupied) { setConfirmBuf({ patient: patient.trim(), birthday: bday.trim(), idNum: idNum.trim(), chartNum: chartNum.trim(), note: note.trim() }); return; }
     doBook();
   };
 
@@ -515,7 +517,7 @@ function LuBookingForm({ date, time, appts, onBook, onClose, isAdmin, luSlotCfg 
     {!occupied && hasBuf && !isAdmin && <div style={{ padding: 8, background: "#FFF8E6", borderRadius: 7, fontSize: fs.err, color: "#B8860B", border: "1px solid #E8DCC0" }}>此時段需間隔緩衝</div>}
     {err && <div style={{ color: "#C2563A", fontSize: fs.err, background: "#FFF0EB", padding: "5px 9px", borderRadius: 5 }}>{err}</div>}
     <button onClick={submit} disabled={!canBook} style={{ padding: isAdmin ? 14 : 11, borderRadius: 9, border: "none", cursor: canBook ? "pointer" : "not-allowed", background: canBook ? `linear-gradient(135deg, ${LU_COLOR}, #145A4A)` : "#CCBFB0", color: "white", fontSize: isAdmin ? 17 : 14, fontWeight: 700, fontFamily: "'Noto Sans TC', sans-serif" }}>確認預約</button>
-    <ConfirmModal open={!!confirmBuf} message="此預約違反 15 分鐘間隔規定，確定仍要預約嗎？" onOk={() => { setConfirmBuf(null); finalBook({ id: Date.now(), date: ds, time, duration: dur, patient: confirmBuf.patient, birthday: confirmBuf.birthday, idNum: confirmBuf.idNum || "", chartNum: confirmBuf.chartNum || "", selfRef }); }} onCancel={() => setConfirmBuf(null)} />
+    <ConfirmModal open={!!confirmBuf} message="此預約違反 15 分鐘間隔規定，確定仍要預約嗎？" onOk={() => { setConfirmBuf(null); finalBook({ id: Date.now(), date: ds, time, duration: dur, patient: confirmBuf.patient, birthday: confirmBuf.birthday, idNum: confirmBuf.idNum || "", chartNum: confirmBuf.chartNum || "", selfRef, note: confirmBuf.note || "" }); }} onCancel={() => setConfirmBuf(null)} />
   </div>);
 }
 
