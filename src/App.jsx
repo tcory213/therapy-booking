@@ -866,11 +866,11 @@ function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainS
       const conts = luDayA.filter(a => a.time !== time && toM(a.time) < toM(time) && toM(time) < toM(a.time) + a.duration);
       if (starts.length > 0) {
         starts.forEach(a => {
-          luRows.push({ time, patient: a.patient, chartNum: a.chartNum, birthday: a.birthday, duration: a.duration, type: "appt", isCont: false });
+          luRows.push({ time, patient: a.patient, chartNum: a.chartNum, birthday: a.birthday, duration: a.duration, note: a.note, type: "appt", isCont: false });
         });
       } else if (conts.length > 0) {
         conts.forEach(a => {
-          luRows.push({ time, patient: a.patient, chartNum: a.chartNum, birthday: a.birthday, duration: a.duration, type: "appt", isCont: true });
+          luRows.push({ time, patient: a.patient, chartNum: a.chartNum, birthday: a.birthday, duration: a.duration, note: a.note, type: "appt", isCont: true });
         });
       } else {
         luRows.push({ time, type: luClosed ? "closed" : "empty" });
@@ -998,6 +998,7 @@ function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainS
                         {r.isCont ? <span style={{ fontSize: 10, color: "#888" }}>（續）</span> : <>
                           <span style={{ color: "#555", fontSize: 10, whiteSpace: "nowrap" }}>{r.chartNum ? `#${r.chartNum}` : r.birthday}</span>
                           <span style={{ fontSize: 10, color: "#444", whiteSpace: "nowrap" }}>{r.duration}分</span>
+                          {r.note && <span style={{ fontSize: 10, color: "#888", whiteSpace: "nowrap" }}>({r.note})</span>}
                         </>}
                       </span>
                     )}
@@ -1158,7 +1159,7 @@ function LuAdminDayView({ appts, selDate, onCellClick, onApptClick, luSlotCfg, s
         return (<tr key={time} style={{ cursor: "pointer" }}><td style={{ padding: "3px 8px", textAlign: "center", background: isH ? "#E8F5F0" : "#F2FAF7", borderRight: `2px solid ${LU_COLOR}30`, borderTop: isH ? `1px solid ${LU_COLOR}30` : "1px solid #E0EDE8", fontWeight: isH ? 700 : 400, color: isH ? LU_COLOR : "#6BA898", height: 38 }}>{time}</td>
           <td onClick={() => occ ? onApptClick(aa) : !closed && onCellClick(selDate, time)} style={{ padding: 0, height: 30, borderTop: isH ? `1px solid ${LU_COLOR}30` : "1px solid #E0EDE8", background: closed ? "#F5F0E5" : occ ? `${LU_COLOR}10` : "#F8FDFB" }}
             onMouseEnter={e => { if (!occ && !closed) e.currentTarget.style.background = "#DDF0E8"; }} onMouseLeave={e => { if (!occ && !closed) e.currentTarget.style.background = "#F8FDFB"; }}>
-            {as && <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 10px", height: "100%", borderLeft: as.checkedIn ? "3px solid #FFD700" : "3px solid transparent" }}><div style={{ width: 26, height: 26, borderRadius: "50%", background: LU_COLOR, flexShrink: 0, color: "white", fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" }}>盧</div><span style={{ fontWeight: 700, color: "#3D2B1F", fontSize: 14 }}>{as.patient}</span><span style={{ color: "#8B7355", fontSize: 13 }}>{as.chartNum ? `#${as.chartNum}` : as.birthday}</span><span style={{ color: "#8B7355", fontSize: 13 }}>{as.duration}分</span>{as.checkedIn && <span style={{ fontSize: 12, fontWeight: 700, color: "#FFD700" }}>✓到</span>}</div>}
+            {as && <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 10px", height: "100%", borderLeft: as.checkedIn ? "3px solid #FFD700" : "3px solid transparent" }}><div style={{ width: 26, height: 26, borderRadius: "50%", background: LU_COLOR, flexShrink: 0, color: "white", fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" }}>盧</div><span style={{ fontWeight: 700, color: "#3D2B1F", fontSize: 14 }}>{as.patient}</span>{as.note && <span style={{ color: "#8B7355", fontSize: 12, maxWidth: 90, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>({as.note})</span>}<span style={{ color: "#8B7355", fontSize: 13 }}>{as.chartNum ? `#${as.chartNum}` : as.birthday}</span><span style={{ color: "#8B7355", fontSize: 13 }}>{as.duration}分</span>{as.checkedIn && <span style={{ fontSize: 12, fontWeight: 700, color: "#FFD700" }}>✓到</span>}</div>}
             {occ && !as && <div style={{ padding: "0 10px", height: "100%", display: "flex", alignItems: "center" }}><span style={{ fontSize: 12, color: `${LU_COLOR}88` }}>{aa.patient} 治療中</span></div>}
             {!occ && closed && <div style={{ padding: "0 10px", height: "100%", display: "flex", alignItems: "center", fontSize: 16, color: "#B5A898" }}>已關閉</div>}
             {!occ && !closed && <div style={{ padding: "0 10px", height: "100%", display: "flex", alignItems: "center", fontSize: 16, color: "#88CCB8" }}>可預約</div>}
@@ -1251,7 +1252,9 @@ function LuAdminDetail({ appt, appts, onClose, onDelete, onUpdate, onAlert, onCo
     <div style={{ background: `${LU_COLOR}12`, border: `1.5px solid ${LU_COLOR}40`, borderRadius: 9, padding: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
         <div style={{ width: 28, height: 28, borderRadius: "50%", background: LU_COLOR, color: "white", fontWeight: 700, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center" }}>盧</div>
-        <div><div style={{ fontWeight: 700, color: "#3D2B1F", fontSize: 14 }}>{appt.patient}</div><div style={{ fontSize: 11, color: "#8B7355" }}>{appt.chartNum ? `#${appt.chartNum}` : appt.birthday}</div></div>
+        <div style={{ fontWeight: 700, color: "#3D2B1F", fontSize: 14 }}>{appt.patient}</div>
+        <input value={note} onChange={e => { setNote(e.target.value); }} onBlur={() => onUpdate(appt.id, { note })} placeholder="附註" style={{ padding: "3px 8px", borderRadius: 5, border: "1.5px solid #D4C5A9", fontSize: 12, background: "#FFFDF5", fontFamily: "'Noto Sans TC', sans-serif", outline: "none", width: 110 }} />
+        <div style={{ fontSize: 11, color: "#8B7355" }}>{appt.chartNum ? `#${appt.chartNum}` : appt.birthday}</div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, fontSize: 12 }}><div><span style={{ color: "#8B7355" }}>日期：</span>{appt.date}</div><div><span style={{ color: "#8B7355" }}>時間：</span>{appt.time}</div></div>
     </div>
@@ -1260,7 +1263,6 @@ function LuAdminDetail({ appt, appts, onClose, onDelete, onUpdate, onAlert, onCo
       <div><span style={{ color: "#8B7355" }}>時長：</span><strong>{appt.duration} 分</strong></div>
       <div><span style={{ color: "#8B7355" }}>轉介：</span><strong style={{ color: appt.selfRef ? "#5B6ABF" : "#B8860B" }}>{appt.selfRef ? "自轉" : "非自轉"}</strong></div>
       <div><span style={{ color: "#8B7355" }}>報到：</span><strong style={{ color: appt.checkedIn ? "#2E7D6F" : "#B5A898" }}>{appt.checkedIn ? "已報到" : "未報到"}</strong></div>
-      {appt.note && <div style={{ gridColumn: "1 / -1" }}><span style={{ color: "#8B7355" }}>附註：</span>{appt.note}</div>}
     </div>}
 
     {editing && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, padding: "0 2px" }}>
@@ -1270,7 +1272,6 @@ function LuAdminDetail({ appt, appts, onClose, onDelete, onUpdate, onAlert, onCo
       <div><label style={{ fontSize: 10, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>身分證字號</label><input value={idNum} onChange={e => setIdNum(e.target.value.toUpperCase())} style={{ ...sel, cursor: "text" }} maxLength={10} /></div>
       <div><label style={{ fontSize: 10, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>時長</label><select value={String(dur)} onChange={e => setDur(Number(e.target.value))} style={sel}>{DURATIONS.map(d => <option key={d} value={String(d)}>{d} 分鐘</option>)}</select></div>
       <div><label style={{ fontSize: 10, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>自轉／非自轉</label><select value={selfRef ? "self" : "other"} onChange={e => setSelfRef(e.target.value === "self")} style={sel}><option value="self">自轉</option><option value="other">非自轉</option></select></div>
-      <div style={{ gridColumn: "1 / -1" }}><label style={{ fontSize: 10, fontWeight: 600, color: "#5A4A3A", display: "block", marginBottom: 3 }}>附註</label><input value={note} onChange={e => setNote(e.target.value)} style={{ ...sel, cursor: "text" }} placeholder="可填寫特殊需求或備忘" /></div>
     </div>}
 
     {!editing && <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
