@@ -47,6 +47,15 @@ const WDAY = ["週一", "週二", "週三", "週四", "週五", "週六", "週�
 
 // Saturday >= 12:00 (effectively 14:00+ since slots jump) is default-closed in admin views
 function isSatAft(date, time) { return date.getDay() === 6 && toM(time) >= M_AFT_START; }
+// Backend default-closed slots (same as front-end FIXED_CLOSED_TIMES + Sat aft)
+function isAdminFixedClosed(date, time) {
+  const dow = date.getDay();
+  const m = toM(time);
+  if (isSatAft(date, time)) return true; // Sat 14:00+
+  const fixedSet = FIXED_CLOSED_TIMES[dow];
+  if (fixedSet?.has(time)) return true;
+  return false;
+}
 const FIXED_CLOSED_TIMES = {
   2: new Set(["09:30","09:45","11:00","11:15","14:30","14:45","15:30","15:45","19:00","19:15","20:30","20:45"]), // 週二
   3: new Set(["14:30","14:45","15:30","15:45"]),                                                                // 週三
@@ -77,7 +86,8 @@ function isNextMonthLocked(ds) {
 function isLuDefaultClosed(ds, time) {
   const dow = new Date(ds).getDay();
   const m = toM(time);
-  if (dow === 3 || dow === 5) return true; // Wed / Fri: fully closed
+  if (dow === 0 || dow === 3 || dow === 5) return true; // Sun / Wed / Fri: fully closed
+  if (dow === 6 && m >= M_AFT_START) return true; // Sat 14:00+
   if ((dow === 1 || dow === 2) && m >= toM("20:30")) return true; // Mon/Tue 20:30+
   if (dow === 4 && m >= toM("18:00")) return true; // Thu 18:00+
   return false;
@@ -814,7 +824,8 @@ function AdminWeekGrid({ appts, selDate, onCellClick, onApptClick, filterTh, cs,
         const dim = filterTh && !occ && fState !== "on" && fState !== "off";
         const satAftBlock = isSatAft(date, time);
         const adminClosed = !occ && !satAftBlock && mainSlotCfg && (satAftBlock ? mainSlotCfg[`${ds}-${time}`] !== true : mainSlotCfg[`${ds}-${time}`] === false);
-        const isBlocked = satAftBlock || adminClosed;
+        const fixedBlock = isAdminFixedClosed(date, time);
+        const isBlocked = fixedBlock ? mainSlotCfg[`${ds}-${time}`] !== true : adminClosed;
         const notMyAppt = filterTh && occ;
         const showBlack = isBlocked || dim || notMyAppt;
         return (<td key={di} onClick={() => occ && !filterTh ? onApptClick(aa) : !dim && !isBlocked && !notMyAppt && onCellClick(date, time)} style={{ borderLeft: "1px solid #EDE5D5", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", padding: 0, height: 26, cursor: showBlack ? "default" : "pointer", position: "relative", background: showBlack ? "#2A2A2A" : occ ? `${th.color}18` : "#FFFDF5", opacity: 1 }} onMouseEnter={e => { if (!showBlack) e.currentTarget.style.background = "#F0E0C8"; }} onMouseLeave={e => { if (!showBlack) e.currentTarget.style.background = "#FFFDF5"; }}>{as && !filterTh && (()=>{ const asth = TH_MAP[as.therapist] || TH_MAP["X"]; return (<div style={{ position: "absolute", top: 1, left: 1, right: 1, height: (as.duration / 15) * 26 - 2, background: `linear-gradient(135deg, ${asth.color}EE, ${asth.color}AA)`, borderRadius: 3, zIndex: 2, padding: "2px 4px", color: "white", fontSize: 10, fontWeight: 600, overflow: "hidden", display: "flex", flexDirection: "column", border: as.checkedIn ? "2px solid #FFD700" : as.onDuty ? "none" : "1.5px dashed rgba(255,255,255,0.6)" }}><div style={{ display: "flex", justifyContent: "space-between" }}><span>{as.patient.slice(0, 3)}</span><span style={{ opacity: 0.8, fontSize: 9 }}>{thLabel(asth)}</span></div>{as.duration >= 30 && <span style={{ fontSize: 9, opacity: 0.75 }}>{as.duration}m·{as.onDuty ? "內" : "外"}</span>}</div>);})()}</td>); })}</tr>); })}</tbody>
@@ -828,8 +839,8 @@ function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainS
   const stats = useMemo(() => ({ t: dayA.length, m: dayA.reduce((s, a) => s + a.duration, 0), on: dayA.filter(a => a.onDuty).length, off: dayA.filter(a => !a.onDuty).length, sr: dayA.filter(a => a.selfRef).length }), [dayA]);
   const toggleSlot = (time) => {
     const k = `${ds}-${time}`;
-    if (isSatAft(selDate, time)) {
-      // Saturday aft: default closed; toggle open(true) ↔ default(undefined)
+    if (isAdminFixedClosed(selDate, time)) {
+      // Default-closed: toggle open(true) ↔ default(undefined)
       setMainSlotCfg(prev => ({ ...prev, [k]: prev[k] === true ? undefined : true }));
     } else {
       setMainSlotCfg(prev => ({ ...prev, [k]: prev[k] === false ? undefined : false }));
@@ -887,10 +898,10 @@ function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainS
     </div>
     <div style={{ borderRadius: 9, border: "1px solid #E0D5C1", overflow: "hidden" }}><table style={{ borderCollapse: "collapse", width: "100%", fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}><thead><tr><th style={{ padding: "9px 8px", background: "#3D2B1F", color: "#F5EDDC", width: 55, textAlign: "center", borderRight: "2px solid #5A4A3A" }}>時間</th><th style={{ padding: "9px 8px", background: "#3D2B1F", color: "#F5EDDC", textAlign: "left" }}>預約內容</th><th style={{ padding: "9px 8px", background: "#3D2B1F", color: "#F5EDDC", width: 50, textAlign: "center" }}>開關</th></tr></thead><tbody>
       {SLOTS.map(time => { const isH = time.endsWith(":00"); const isBr = time === "14:00"; const starts = getStarts(time); const all = getAllAt(time); const occ = all.length > 0;
-        const satAft = isSatAft(selDate, time);
+        const fixedClosed2 = isAdminFixedClosed(selDate, time);
         const k = `${ds}-${time}`;
-        const closed = satAft ? mainSlotCfg[k] !== true : mainSlotCfg[k] === false;
-        const toggleLabel = satAft ? (mainSlotCfg[k] === true ? "開" : "關") : (mainSlotCfg[k] === false ? "關" : "開");
+        const closed = mainSlotCfg[k] === true ? false : (fixedClosed2 || mainSlotCfg[k] === false);
+        const toggleLabel = closed ? "關" : "開";
         const fState = filterTh && !occ && !closed ? getPeriodStateAt(filterTh, selDate, time, cs) : null;
         const fUnavail = filterTh && !occ && !closed && (fState !== "on" && fState !== "off");
         const fBuf = filterTh && !occ && !closed && fState === "on" && bufferConflict(appts, ds, time, 15, filterTh, null);
