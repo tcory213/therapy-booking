@@ -325,7 +325,7 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
     if (!patient.trim()) { setErr("請輸入患者姓名"); return; }
     if (isAdmin && !chartNum.trim()) { setErr("請輸入病歷號"); return; }
     if (!isAdmin && (!bday.trim() || bday.length !== 6)) { setErr("請輸入民國年月日六碼"); return; }
-    if (!isAdmin && !idNum.trim()) { setErr("請輸入身分證字號"); return; }
+    if (!isAdmin && !idNum.trim() && !chartNum.trim()) { setErr("請輸入身分證字號或病歷號（至少填一項）"); return; }
     if (selTreats.length === 0) { setErr("請選擇至少一項治療項目"); return; }
     if (!selTh) { setErr("請選擇治療師"); return; }
     if (!validRange(time, totalDur)) { setErr("超出營業時間"); return; }
@@ -384,7 +384,8 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
     {isAdmin && <div><label style={lbl}>病歷號 *</label><input value={chartNum} onChange={e => setChartNum(e.target.value)} style={inp} placeholder="請輸入病歷號" /></div>}
     {!isAdmin && <div><label style={lbl}>生日（民國年月日六碼）*</label><input value={bday} onChange={e => setBday(e.target.value.replace(/\D/g, "").slice(0, 6))} style={inp} placeholder="如 800515" maxLength={6} /></div>}
     {isAdmin && <div><label style={lbl}>生日（民國年月日六碼，選填）</label><input value={bday} onChange={e => setBday(e.target.value.replace(/\D/g, "").slice(0, 6))} style={inp} placeholder="如 800515" maxLength={6} /></div>}
-    <div><label style={lbl}>身分證字號 {isAdmin ? "（選填）" : "*"}</label><input value={idNum} onChange={e => setIdNum(e.target.value.toUpperCase())} style={inp} placeholder={isAdmin ? "（後台選填）" : "請輸入身分證字號"} maxLength={10} /></div>
+    {!isAdmin && <div><label style={lbl}>身分證字號 或 病歷號（二擇一必填）</label><div style={{ display: "flex", gap: 6 }}><input value={idNum} onChange={e => setIdNum(e.target.value.toUpperCase())} style={{ ...inp, flex: 1 }} placeholder="身分證字號" maxLength={10} /><input value={chartNum} onChange={e => setChartNum(e.target.value)} style={{ ...inp, flex: 1 }} placeholder="病歷號" /></div></div>}
+    {isAdmin && <div><label style={lbl}>身分證字號 {isAdmin ? "" : "*"}</label><input value={idNum} onChange={e => setIdNum(e.target.value.toUpperCase())} style={inp} placeholder={isAdmin ? "（後台選填）" : "請輸入身分證字號"} maxLength={10} /></div>}
 
     <div><label style={lbl}>治療項目（可複選）</label>
       <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
@@ -495,7 +496,7 @@ function LuBookingForm({ date, time, appts, onBook, onClose, isAdmin, luSlotCfg 
     if (!patient.trim()) { setErr("請輸入患者姓名"); return; }
     if (isAdmin && !chartNum.trim()) { setErr("請輸入病歷號"); return; }
     if (!isAdmin && (!bday.trim() || bday.length !== 6)) { setErr("請輸入民國年月日六碼"); return; }
-    if (!isAdmin && !idNum.trim()) { setErr("請輸入身分證字號"); return; }
+    if (!isAdmin && !idNum.trim() && !chartNum.trim()) { setErr("請輸入身分證字號或病歷號（至少填一項）"); return; }
     if (!luValidRange(time, dur)) { setErr("超出盧獨立時段"); return; }
     finalBook({ id: Date.now(), date: ds, time, duration: dur, patient: patient.trim(), birthday: bday.trim(), idNum: idNum.trim(), chartNum: chartNum.trim(), selfRef, note: note.trim() });
   };
@@ -503,7 +504,7 @@ function LuBookingForm({ date, time, appts, onBook, onClose, isAdmin, luSlotCfg 
     if (!patient.trim()) { setErr("請輸入患者姓名"); return; }
     if (isAdmin && !chartNum.trim()) { setErr("請輸入病歷號"); return; }
     if (!isAdmin && (!bday.trim() || bday.length !== 6)) { setErr("請輸入民國年月日六碼"); return; }
-    if (!isAdmin && !idNum.trim()) { setErr("請輸入身分證字號"); return; }
+    if (!isAdmin && !idNum.trim() && !chartNum.trim()) { setErr("請輸入身分證字號或病歷號（至少填一項）"); return; }
     if (isAdmin && hasBuf && !occupied) { setConfirmBuf({ patient: patient.trim(), birthday: bday.trim(), idNum: idNum.trim(), chartNum: chartNum.trim(), note: note.trim() }); return; }
     doBook();
   };
@@ -518,7 +519,8 @@ function LuBookingForm({ date, time, appts, onBook, onClose, isAdmin, luSlotCfg 
     {isAdmin
       ? <div><label style={aLbl}>生日（民國年月日六碼，選填）</label><input value={bday} onChange={e => setBday(e.target.value.replace(/\D/g, "").slice(0, 6))} style={aInp} placeholder="如 800515" maxLength={6} /></div>
       : <div><label style={aLbl}>生日（民國年月日六碼）*</label><input value={bday} onChange={e => setBday(e.target.value.replace(/\D/g, "").slice(0, 6))} style={aInp} placeholder="如 800515" maxLength={6} /></div>}
-    <div><label style={aLbl}>身分證字號 {isAdmin ? "（選填）" : "*"}</label><input value={idNum} onChange={e => setIdNum(e.target.value.toUpperCase())} style={aInp} placeholder={isAdmin ? "（後台選填）" : "請輸入身分證字號"} maxLength={10} /></div>
+    {!isAdmin && <div><label style={aLbl}>身分證字號 或 病歷號（二擇一必填）</label><div style={{ display: "flex", gap: 6 }}><input value={idNum} onChange={e => setIdNum(e.target.value.toUpperCase())} style={{ ...aInp, flex: 1 }} placeholder="身分證字號" maxLength={10} /><input value={chartNum} onChange={e => setChartNum(e.target.value)} style={{ ...aInp, flex: 1 }} placeholder="病歷號" /></div></div>}
+    {isAdmin && <div><label style={aLbl}>身分證字號 {isAdmin ? "（選填）" : "*"}</label><input value={idNum} onChange={e => setIdNum(e.target.value.toUpperCase())} style={aInp} placeholder={isAdmin ? "（後台選填）" : "請輸入身分證字號"} maxLength={10} /></div>}
     <div><label style={aLbl}>治療時長</label><div style={{ display: "flex", gap: 5 }}>{DURATIONS.map(d => (<button key={d} onClick={() => { setDur(d); setErr(""); }} style={{ flex: 1, padding: "7px 0", borderRadius: 7, cursor: "pointer", fontSize: fs.btn, border: dur === d ? `2px solid ${LU_COLOR}` : "1.5px solid #D4C5A9", background: dur === d ? "#E8F5F0" : "#FFFDF5", color: dur === d ? LU_COLOR : "#5A4A3A", fontWeight: dur === d ? 700 : 500, fontFamily: "'Noto Sans TC', sans-serif" }}>{d} 分</button>))}</div></div>
     {isAdmin && <div><label style={aLbl}>自轉／非自轉</label><div style={{ display: "flex", gap: 5 }}>{[{ v: true, l: "自轉" }, { v: false, l: "非自轉" }].map(o => (<button key={String(o.v)} onClick={() => setSelfRef(o.v)} style={{ flex: 1, padding: "7px 0", borderRadius: 7, cursor: "pointer", fontSize: fs.btn, border: selfRef === o.v ? `2px solid ${LU_COLOR}` : "1.5px solid #D4C5A9", background: selfRef === o.v ? "#E8F5F0" : "#FFFDF5", color: selfRef === o.v ? LU_COLOR : "#5A4A3A", fontWeight: selfRef === o.v ? 700 : 500, fontFamily: "'Noto Sans TC', sans-serif" }}>{o.l}</button>))}</div></div>}
     {isAdmin && <div><label style={aLbl}>附註（選填）</label><input value={note} onChange={e => setNote(e.target.value)} style={{ ...aInp, width: "100%", boxSizing: "border-box" }} placeholder="可填寫特殊需求或備忘" /></div>}
@@ -765,16 +767,25 @@ function LuFrontWeekGrid({ appts, selDate, onCellClick, luSlotCfg }) {
 
 /* ═══════════════════════════════════════════ Front Phone Lookup ═══════════════════════════════════════════ */
 function PhoneLookup({ appts, luAppts, onDelete, onLuDelete }) {
-  const [idNum, setIdNum] = useState("");
+  const [query, setQuery] = useState("");
+  const [mode, setMode] = useState("id"); // "id" | "chart"
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const q = idNum.trim().toUpperCase();
+  const q = query.trim();
+  const qUpper = q.toUpperCase();
+
   const results = useMemo(() => {
     if (q.length < 2) return [];
     const today = fd(new Date());
-    const mainR = appts.filter(a => a.idNum && a.idNum.toUpperCase() === q && a.date >= today).map(a => ({ ...a, sys: "main" }));
-    const luR = luAppts.filter(a => a.idNum && a.idNum.toUpperCase() === q && a.date >= today).map(a => ({ ...a, sys: "lu" }));
-    return [...mainR, ...luR].sort(sortByDateTime);
-  }, [q, appts, luAppts]);
+    if (mode === "id") {
+      const mainR = appts.filter(a => a.idNum && a.idNum.toUpperCase() === qUpper && a.date >= today).map(a => ({ ...a, sys: "main" }));
+      const luR = luAppts.filter(a => a.idNum && a.idNum.toUpperCase() === qUpper && a.date >= today).map(a => ({ ...a, sys: "lu" }));
+      return [...mainR, ...luR].sort(sortByDateTime);
+    } else {
+      const mainR = appts.filter(a => a.chartNum && a.chartNum.toString() === q && a.date >= today).map(a => ({ ...a, sys: "main" }));
+      const luR = luAppts.filter(a => a.chartNum && a.chartNum.toString() === q && a.date >= today).map(a => ({ ...a, sys: "lu" }));
+      return [...mainR, ...luR].sort(sortByDateTime);
+    }
+  }, [q, qUpper, mode, appts, luAppts]);
   const handleDelete = () => {
     if (!deleteTarget) return;
     if (deleteTarget.date === fd(new Date())) return; // 今日不可取消
@@ -783,9 +794,14 @@ function PhoneLookup({ appts, luAppts, onDelete, onLuDelete }) {
     setDeleteTarget(null);
   };
   return (<div style={{ maxWidth: 500, margin: "0 auto" }}>
-    <div style={{ textAlign: "center", marginBottom: 20 }}><div style={{ fontSize: 42, marginBottom: 8 }}>🔍</div><h2 style={{ margin: 0, fontFamily: "'Noto Serif TC', serif", color: "#3D2B1F", fontSize: 21 }}>預約查詢及取消</h2><p style={{ color: "#8B7355", fontSize: 15, margin: "6px 0 0 0" }}>輸入身分證字號查詢今日起的預約</p></div>
-    <input value={idNum} onChange={e => setIdNum(e.target.value.toUpperCase())} placeholder="輸入身分證字號" style={{ width: "100%", padding: "14px 18px", borderRadius: 10, border: "1.5px solid #D4C5A9", fontSize: 19, background: "#FFFDF5", fontFamily: "'Noto Sans TC', sans-serif", boxSizing: "border-box", outline: "none", textAlign: "center", letterSpacing: 2 }} maxLength={10} />
-    {q.length > 0 && q.length < 2 && <p style={{ textAlign: "center", fontSize: 14, color: "#B5A898", margin: "8px 0 0 0" }}>請輸入身分證字號</p>}
+    <div style={{ textAlign: "center", marginBottom: 20 }}><div style={{ fontSize: 42, marginBottom: 8 }}>🔍</div><h2 style={{ margin: 0, fontFamily: "'Noto Serif TC', serif", color: "#3D2B1F", fontSize: 21 }}>預約查詢及取消</h2><p style={{ color: "#8B7355", fontSize: 15, margin: "6px 0 0 0" }}>輸入身分證字號或病歷號查詢今日起的預約</p></div>
+    <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+      {[{ k: "id", l: "🪪 身分證字號" }, { k: "chart", l: "📋 病歷號" }].map(m => (
+        <button key={m.k} onClick={() => { setMode(m.k); setQuery(""); }} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: mode === m.k ? "2px solid #C2563A" : "1.5px solid #D4C5A9", background: mode === m.k ? "#FFF0EB" : "#FFFDF5", color: mode === m.k ? "#C2563A" : "#5A4A3A", fontWeight: mode === m.k ? 700 : 500, fontSize: 14, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>{m.l}</button>
+      ))}
+    </div>
+    <input value={query} onChange={e => setQuery(mode === "id" ? e.target.value.toUpperCase() : e.target.value)} placeholder={mode === "id" ? "輸入身分證字號" : "輸入病歷號"} style={{ width: "100%", padding: "14px 18px", borderRadius: 10, border: "1.5px solid #D4C5A9", fontSize: 19, background: "#FFFDF5", fontFamily: "'Noto Sans TC', sans-serif", boxSizing: "border-box", outline: "none", textAlign: "center", letterSpacing: mode === "id" ? 2 : 0 }} maxLength={mode === "id" ? 10 : 20} />
+    {q.length > 0 && q.length < 2 && <p style={{ textAlign: "center", fontSize: 14, color: "#B5A898", margin: "8px 0 0 0" }}>請輸入更多字元</p>}
     {q.length >= 2 && results.length === 0 && <div style={{ textAlign: "center", padding: "30px 0", color: "#8B7355" }}><div style={{ fontSize: 38, marginBottom: 8 }}>📭</div><p style={{ margin: 0, fontSize: 16 }}>查無今日以後的預約紀錄</p></div>}
     {results.length > 0 && <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}><p style={{ fontSize: 15, color: "#8B7355", margin: 0 }}>找到 {results.length} 筆</p>
       {results.map(a => { const isLu = a.sys === "lu"; const thObj = isLu ? null : (TH_MAP[a.therapist] || TH_MAP["X"]); const color = isLu ? LU_COLOR : thObj.color; const isToday = a.date === fd(new Date()); return (<div key={a.id} style={{ background: "#FFFDF5", border: `1.5px solid ${color}40`, borderRadius: 10, padding: 16 }}>
