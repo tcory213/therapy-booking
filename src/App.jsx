@@ -1345,6 +1345,7 @@ function calcLuPay(a) {
 function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
   const [month, setMonth] = useState(() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}`; });
   const [selTh, setSelTh] = useState(null);
+  const [showCoDutyDetail, setShowCoDutyDetail] = useState(false);
   const [salaryUnlocked, setSalaryUnlocked] = useState(false);
   const [salaryPw, setSalaryPw] = useState("");
   const [salaryPwErr, setSalaryPwErr] = useState(false);
@@ -1482,7 +1483,7 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
       </div>
       <div style={{ padding: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
         {summaries.filter(s2 => !salaryViewer || salaryViewer === "all" || s2.id === salaryViewer).map(s2 => (
-          <div key={s2.id} onClick={() => setSelTh(selTh === s2.id ? null : s2.id)}
+          <div key={s2.id} onClick={() => { setSelTh(selTh === s2.id ? null : s2.id); setShowCoDutyDetail(false); }}
             style={{ border: `1.5px solid ${selTh === s2.id ? s2.color : s2.color + "40"}`, borderRadius: 9, padding: 12, background: selTh === s2.id ? `${s2.color}15` : `${s2.color}08`, cursor: "pointer", transition: "all 0.15s" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
               <div style={{ width: 30, height: 30, borderRadius: "50%", background: s2.color, color: "white", fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>{s2.id}</div>
@@ -1559,7 +1560,43 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
             {(() => { const items = selDetail.filter(a => getApptTreats(a).includes("taping") && a.onDuty && a.selfRef); return items.length > 0 ? <><div style={{ color: "#5B6ABF" }}>貼紮·班內自轉 (70%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPartialPay(a,"taping"),0).toLocaleString()}</div></> : null; })()}
             {(() => { const items = selDetail.filter(a => getApptTreats(a).includes("taping") && !a.onDuty && a.selfRef); return items.length > 0 ? <><div style={{ color: "#B8860B" }}>貼紮·班外自轉 (90%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPartialPay(a,"taping"),0).toLocaleString()}</div></> : null; })()}
             {selSummary.otherCount > 0 && <><div style={{ color: "#8B7355" }}>震波/雷射 (100/份)</div><div style={{ textAlign: "right" }}>{selSummary.otherCount} 份</div><div style={{ textAlign: "right" }}>NT$ {selSummary.otherPay.toLocaleString()}</div></>}
-            {coDutyBonus[selTh] > 0 && <><div style={{ color: "#B8860B" }}>共班分潤 (5%)</div><div style={{ textAlign: "right" }}>—</div><div style={{ textAlign: "right" }}>NT$ {coDutyBonus[selTh].toLocaleString()}</div></>}
+            {coDutyBonus[selTh] > 0 && (() => {
+              const coDutyDetail = monthAppts.filter(a =>
+                a.checkedIn && getApptTreats(a).includes("manual") && a.therapist !== "X" && a.therapist !== selTh &&
+                getPeriodStateAt(selTh, new Date(a.date), a.time, cs) === "on"
+              ).sort(sortByDateTime);
+              return (<>
+                <div style={{ color: "#B8860B", display: "flex", alignItems: "center", gap: 6 }}>
+                  共班分潤 (5%)
+                  <button onClick={() => setShowCoDutyDetail(v => !v)} style={{ fontSize: 10, padding: "1px 7px", borderRadius: 4, border: "1px solid #B8860B", background: showCoDutyDetail ? "#B8860B" : "#FFF8E6", color: showCoDutyDetail ? "white" : "#B8860B", cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif", fontWeight: 600 }}>{showCoDutyDetail ? "收起" : "明細"}</button>
+                </div>
+                <div style={{ textAlign: "right" }}>—</div>
+                <div style={{ textAlign: "right" }}>NT$ {coDutyBonus[selTh].toLocaleString()}</div>
+                {showCoDutyDetail && <div style={{ gridColumn: "1/-1", background: "#FFF8E6", border: "1px solid #E8DCC0", borderRadius: 7, padding: "10px 12px", marginTop: 4 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#B8860B", marginBottom: 6 }}>共班分潤來源（{coDutyDetail.length} 筆）</div>
+                  <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif" }}>
+                    <thead><tr style={{ background: "#F5EDDC" }}>
+                      {["日期","時間","患者","治療師","時長","收費","分潤(5%)"].map(h => <th key={h} style={{ padding: "3px 6px", textAlign: "left", fontWeight: 600, color: "#5A4A3A", borderBottom: "1px solid #E0D5C1" }}>{h}</th>)}
+                    </tr></thead>
+                    <tbody>
+                      {coDutyDetail.map((a, i) => {
+                        const rev = calcRevenue(getApptManualDur(a), "manual");
+                        const th2 = TH_MAP[a.therapist] || TH_MAP["X"];
+                        return (<tr key={a.id} style={{ background: i % 2 === 0 ? "white" : "#FFFDF5" }}>
+                          <td style={{ padding: "3px 6px", borderBottom: "1px solid #F0E8D8" }}>{a.date}</td>
+                          <td style={{ padding: "3px 6px", borderBottom: "1px solid #F0E8D8" }}>{a.time}</td>
+                          <td style={{ padding: "3px 6px", borderBottom: "1px solid #F0E8D8", fontWeight: 600 }}>{a.patient}</td>
+                          <td style={{ padding: "3px 6px", borderBottom: "1px solid #F0E8D8" }}><span style={{ display: "inline-block", width: 14, height: 14, borderRadius: "50%", background: th2.color, color: "white", textAlign: "center", lineHeight: "14px", fontSize: 8, fontWeight: 700, marginRight: 3 }}>{thLabel(th2)}</span>{th2.name}</td>
+                          <td style={{ padding: "3px 6px", borderBottom: "1px solid #F0E8D8" }}>{getApptManualDur(a)}分</td>
+                          <td style={{ padding: "3px 6px", borderBottom: "1px solid #F0E8D8" }}>{rev}</td>
+                          <td style={{ padding: "3px 6px", borderBottom: "1px solid #F0E8D8", fontWeight: 700, color: "#B8860B" }}>+{Math.round(rev * 0.05)}</td>
+                        </tr>);
+                      })}
+                    </tbody>
+                  </table>
+                </div>}
+              </>);
+            })()}
             </>)}
 
             <div style={{ gridColumn: "1/3", borderTop: "2px solid #3D2B1F", paddingTop: 8, marginTop: 4, fontWeight: 700, fontSize: 14, color: "#3D2B1F" }}>合計</div>
