@@ -849,6 +849,7 @@ function AdminWeekGrid({ appts, selDate, onCellClick, onApptClick, filterTh, cs,
 }
 
 function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainSlotCfg, setMainSlotCfg, luSlotCfg, filterTh, cs }) {
+  const [auditTh, setAuditTh] = useState(null); // 對帳模式選定的治療師
   const ds = fd(selDate); const dayA = useMemo(() => appts.filter(a => a.date === ds), [appts, ds]);
   const getStarts = useCallback(time => dayA.filter(a => a.time === time), [dayA]);
   const getAllAt = useCallback(time => { const m = toM(time); return dayA.filter(a => m >= toM(a.time) && m < toM(a.time) + a.duration); }, [dayA]);
@@ -908,12 +909,23 @@ function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainS
     return { dateLabel, rows, luRows };
   }, [selDate, dayA, mainSlotCfg, ds, luAppts, luSlotCfg]);
   return (<div>
+  return (<div>
+    {/* 對帳專用 toolbar */}
+    <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+      <button onClick={() => setAuditTh(auditTh ? null : "pick")} style={{ padding: "5px 12px", borderRadius: 7, border: auditTh ? "2px solid #C2563A" : "1.5px solid #D4C5A9", background: auditTh ? "#FFF0EB" : "#FFFDF5", color: auditTh ? "#C2563A" : "#5A4A3A", fontWeight: auditTh ? 700 : 500, cursor: "pointer", fontSize: 12, fontFamily: "'Noto Sans TC', sans-serif" }}>🔍 對帳專用{auditTh && auditTh !== "pick" ? `：${TH_MAP[auditTh]?.name}` : ""}</button>
+      {auditTh && THERAPISTS.map(t => (<button key={t.id} onClick={() => setAuditTh(auditTh === t.id ? null : t.id)} style={{ width: 32, height: 32, borderRadius: "50%", border: auditTh === t.id ? "3px solid #3D2B1F" : "2px solid transparent", background: t.color, color: "white", fontWeight: 700, fontSize: 11, cursor: "pointer", outline: "none" }}>{t.label}</button>))}
+      {auditTh && <button onClick={() => setAuditTh(null)} style={{ padding: "5px 10px", borderRadius: 7, border: "1.5px solid #D4C5A9", background: "#FFFDF5", color: "#8B7355", fontSize: 11, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>✕ 離開對帳</button>}
+    </div>
     <div style={{ display: "flex", gap: 12, marginBottom: 10, padding: "8px 14px", background: "#FFFDF5", borderRadius: 7, border: "1px solid #E0D5C1", fontSize: 14, color: "#5A4A3A", flexWrap: "wrap", alignItems: "center" }}>
       <span>預約：<strong>{stats.t}</strong></span><span>時數：<strong>{stats.m}</strong>分</span><span style={{ color: "#2E7D6F" }}>班內：<strong>{stats.on}</strong></span><span style={{ color: "#C2563A" }}>班外：<strong>{stats.off}</strong></span><span style={{ color: "#5B6ABF" }}>自轉：<strong>{stats.sr}</strong></span>
       <button onClick={() => setShowPrint(true)} style={{ marginLeft: "auto", padding: "5px 14px", borderRadius: 6, border: "1.5px solid #3D2B1F", background: "#FFFDF5", color: "#3D2B1F", cursor: "pointer", fontWeight: 600, fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}>🖨️ 列印</button>
     </div>
     <div style={{ borderRadius: 9, border: "1px solid #E0D5C1", overflow: "hidden" }}><table style={{ borderCollapse: "collapse", width: "100%", fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}><thead><tr><th style={{ padding: "9px 8px", background: "#3D2B1F", color: "#F5EDDC", width: 55, textAlign: "center", borderRight: "2px solid #5A4A3A" }}>時間</th><th style={{ padding: "9px 8px", background: "#3D2B1F", color: "#F5EDDC", textAlign: "left" }}>預約內容</th><th style={{ padding: "9px 8px", background: "#3D2B1F", color: "#F5EDDC", width: 50, textAlign: "center" }}>開關</th></tr></thead><tbody>
       {SLOTS.map(time => { const isH = time.endsWith(":00"); const isBr = time === "14:00"; const starts = getStarts(time); const all = getAllAt(time); const occ = all.length > 0;
+        // 對帳模式：只留選定治療師的已報到預約亮著，其他全黑
+        const auditActive = auditTh && auditTh !== "pick";
+        const hasMyCheckedIn = auditActive && all.some(a => a.therapist === auditTh && a.checkedIn);
+        const auditBlack = auditActive && !hasMyCheckedIn;
         const fixedClosed2 = isAdminFixedClosed(selDate, time);
         const k = `${ds}-${time}`;
         const closed = mainSlotCfg[k] === true ? false : (fixedClosed2 || mainSlotCfg[k] === false);
@@ -936,14 +948,15 @@ function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainS
             <span style={{ fontSize: 12, fontWeight: 600, padding: "1px 5px", borderRadius: 3, background: aa.selfRef ? "#EEEEFF" : "#FFF8E6", color: aa.selfRef ? "#5B6ABF" : "#B8860B" }}>{aa.selfRef ? "自轉" : "非自轉"}</span>
             {aa.checkedIn && <span style={{ fontSize: 12, fontWeight: 700, color: "#FFD700" }}>✓到</span>}
           </div>); };
-        return (<tr key={time} style={{ cursor: "pointer", ...(isBr ? { borderTop: "3px solid #C2563A" } : {}) }}><td onClick={() => !filterBlack && onCellClick(selDate, time)} style={{ padding: "3px 8px", textAlign: "center", background: isH ? "#F0E8D8" : "#F8F2E6", borderRight: "2px solid #D4C5A9", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", fontWeight: isH ? 700 : 400, color: isH ? "#3D2B1F" : "#8B7355", height: 30 }}>{time}</td>
-          <td style={{ padding: 0, minHeight: 30, borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", background: filterBlack ? "#2A2A2A" : closed ? "#2A2A2A" : "#FFFDF5" }}>
-            {!filterBlack && starts.map(as => renderApptRow(as, false))}
-            {!filterBlack && all.filter(aa => aa.time !== time).map(aa => renderApptRow(aa, true))}
-            {!filterBlack && !occ && closed && <div style={{ padding: "0 10px", height: 30, display: "flex", alignItems: "center", fontSize: 13, color: "rgba(255,255,255,0.5)" }}>已關閉</div>}
-            {!filterBlack && !occ && !closed && <div onClick={() => onCellClick(selDate, time)} style={{ padding: "0 10px", height: 30, display: "flex", alignItems: "center", fontSize: 13, color: "#C4B49A", cursor: "pointer" }}
+        return (<tr key={time} style={{ cursor: "pointer", ...(isBr ? { borderTop: "3px solid #C2563A" } : {}) }}><td onClick={() => !filterBlack && !auditBlack && onCellClick(selDate, time)} style={{ padding: "3px 8px", textAlign: "center", background: isH ? "#F0E8D8" : "#F8F2E6", borderRight: "2px solid #D4C5A9", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", fontWeight: isH ? 700 : 400, color: isH ? "#3D2B1F" : "#8B7355", height: 30 }}>{time}</td>
+          <td style={{ padding: 0, minHeight: 30, borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", background: auditBlack ? "#2A2A2A" : filterBlack ? "#2A2A2A" : closed ? "#2A2A2A" : "#FFFDF5" }}>
+            {!filterBlack && !auditBlack && starts.map(as => renderApptRow(as, false))}
+            {!filterBlack && !auditBlack && all.filter(aa => aa.time !== time).map(aa => renderApptRow(aa, true))}
+            {!filterBlack && !auditBlack && !occ && closed && <div style={{ padding: "0 10px", height: 30, display: "flex", alignItems: "center", fontSize: 13, color: "rgba(255,255,255,0.5)" }}>已關閉</div>}
+            {!filterBlack && !auditBlack && !occ && !closed && <div onClick={() => onCellClick(selDate, time)} style={{ padding: "0 10px", height: 30, display: "flex", alignItems: "center", fontSize: 13, color: "#C4B49A", cursor: "pointer" }}
               onMouseEnter={e => e.currentTarget.style.color = "#8B7355"} onMouseLeave={e => e.currentTarget.style.color = "#C4B49A"}>可預約</div>}
-            {filterBlack && <div style={{ height: 30 }} />}
+            {(auditBlack || filterBlack) && <div style={{ height: 30 }} />}
+            {auditActive && hasMyCheckedIn && all.filter(a => a.therapist === auditTh && a.checkedIn).map(as => renderApptRow(as, false))}
           </td>
           <td style={{ textAlign: "center", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5" }}>
             <button onClick={() => toggleSlot(time)} style={{ padding: "2px 8px", borderRadius: 4, border: "none", cursor: "pointer", background: closed ? "#EDE5D5" : "#3D2B1FDD", color: closed ? "#B5A898" : "white", fontSize: 9, fontWeight: 600, fontFamily: "'Noto Sans TC', sans-serif" }}>{toggleLabel}</button>
@@ -1345,11 +1358,12 @@ function calcLuPay(a) {
 function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
   const [month, setMonth] = useState(() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}`; });
   const [selTh, setSelTh] = useState(null);
+  const [showCoDutyDetail, setShowCoDutyDetail] = useState(false);
   const [salaryUnlocked, setSalaryUnlocked] = useState(false);
   const [salaryPw, setSalaryPw] = useState("");
   const [salaryPwErr, setSalaryPwErr] = useState(false);
   const [salaryViewer, setSalaryViewer] = useState(null); // null | "all" | therapist id
-  const SALARY_PWS = { "tcory213": "all", "0128": "C", "1111": "D" };
+  const SALARY_PWS = { "tcory213": "all", "0128": "C", "1111": "D", "7412": "B", "0412": "A", "5992": "E" };
 
   const [y, mo] = month.split("-").map(Number);
   const monthStart = `${y}-${String(mo).padStart(2, "0")}-01`;
@@ -1398,25 +1412,21 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
   }, [monthLuAppts]);
 
   // Co-duty bonus: for each checked manual therapy, other on-duty therapists get 5% of revenue
-  const coDutyBonus = useMemo(() => {
-    const bonus = {};
-    THERAPISTS.forEach(t => { bonus[t.id] = 0; });
-    const checkedEligible = monthAppts.filter(a => a.checkedIn && getApptTreats(a).includes("manual") && a.therapist !== "X");
-    if (!checkedEligible.length) return bonus;
+  const { teamBonus } = useMemo(() => {
+    const team = {};
+    THERAPISTS.forEach(t => { team[t.id] = 0; });
     const dateCache = {};
-    checkedEligible.forEach(a => {
+    const getDate2 = (ds) => { if (!dateCache[ds]) dateCache[ds] = new Date(ds); return dateCache[ds]; };
+    // 全團分潤：班內徒手 → 所有其他治療師各5%（不限共班）
+    monthAppts.filter(a => a.checkedIn && a.onDuty && getApptTreats(a).includes("manual") && a.therapist !== "X").forEach(a => {
       const revenue = calcRevenue(getApptManualDur(a), "manual");
-      if (!dateCache[a.date]) dateCache[a.date] = new Date(a.date);
-      const apptDate = dateCache[a.date];
       THERAPISTS.forEach(t => {
         if (t.id === a.therapist) return;
-        if (getPeriodStateAt(t.id, apptDate, a.time, cs) === "on") {
-          bonus[t.id] += Math.round(revenue * 0.05);
-        }
+        team[t.id] += Math.round(revenue * 0.05);
       });
     });
-    return bonus;
-  }, [monthAppts, cs]);
+    return { teamBonus: team };
+  }, [monthAppts]);
 
   const selDetail = useMemo(() => {
     if (!selTh) return null;
@@ -1436,7 +1446,7 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
         rows.push([t.name, a.date, a.time, a.patient, a.birthday, getApptTreatLabel(a), a.duration, a.onDuty ? "班內" : "班外", a.selfRef ? "自轉" : "非自轉", revenue || "-", calcPay(a)]);
       });
       const s = summaries.find(s2 => s2.id === t.id);
-      const total = s ? s.totalPay + (coDutyBonus[t.id] || 0) : 0;
+      const total = s ? s.totalPay + (teamBonus[t.id] || 0) : 0;
       rows.push([t.name + " 小計", "", "", "", "", "", "", "", "", "", total]);
       rows.push([]);
     });
@@ -1462,7 +1472,7 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
       <input type="month" value={month} onChange={e => { setMonth(e.target.value); setSelTh(null); onMonthChange?.(e.target.value); }}
         style={{ padding: "6px 12px", borderRadius: 7, border: "1.5px solid #D4C5A9", fontSize: 14, background: "#FFFDF5", fontFamily: "'Noto Sans TC', sans-serif", outline: "none" }} />
       <span style={{ fontSize: 12, color: "#8B7355" }}>僅計入已報到個案</span>
-      <button onClick={exportCSV} style={{ padding: "5px 12px", borderRadius: 6, border: "1.5px solid #2E7D6F", background: "#E6F5EE", color: "#2E7D6F", cursor: "pointer", fontWeight: 600, fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif" }}>⬇ 匯出 CSV</button>
+      {salaryViewer === "all" && <button onClick={exportCSV} style={{ padding: "5px 12px", borderRadius: 6, border: "1.5px solid #2E7D6F", background: "#E6F5EE", color: "#2E7D6F", cursor: "pointer", fontWeight: 600, fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif" }}>⬇ 匯出 CSV</button>}
       <div style={{ marginLeft: "auto", display: "flex", gap: 5, alignItems: "center" }}>
         {salaryUnlocked ? (
           <span style={{ fontSize: 11, color: "#2E7D6F", fontWeight: 600 }}>🔓 金額已解鎖 <button onClick={() => setSalaryUnlocked(false)} style={{ marginLeft: 4, padding: "2px 8px", borderRadius: 4, border: "1px solid #D4C5A9", background: "#FFFDF5", color: "#8B7355", cursor: "pointer", fontSize: 10, fontFamily: "'Noto Sans TC', sans-serif" }}>鎖定</button></span>
@@ -1482,7 +1492,7 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
       </div>
       <div style={{ padding: 12, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10 }}>
         {summaries.filter(s2 => !salaryViewer || salaryViewer === "all" || s2.id === salaryViewer).map(s2 => (
-          <div key={s2.id} onClick={() => setSelTh(selTh === s2.id ? null : s2.id)}
+          <div key={s2.id} onClick={() => { setSelTh(selTh === s2.id ? null : s2.id); setShowCoDutyDetail(false); }}
             style={{ border: `1.5px solid ${selTh === s2.id ? s2.color : s2.color + "40"}`, borderRadius: 9, padding: 12, background: selTh === s2.id ? `${s2.color}15` : `${s2.color}08`, cursor: "pointer", transition: "all 0.15s" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
               <div style={{ width: 30, height: 30, borderRadius: "50%", background: s2.color, color: "white", fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>{s2.id}</div>
@@ -1495,18 +1505,19 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
               <div style={{ color: "#8B7355" }}>徒手治療</div><div style={{ fontWeight: 600, textAlign: "right" }}>{s2.manualCount} 次 · {s2.manualMin} 分</div>
               <div style={{ color: "#8B7355" }}>貼紮</div><div style={{ fontWeight: 600, textAlign: "right" }}>{s2.tapingCount} 次</div>
               <div style={{ color: "#8B7355" }}>震波/雷射</div><div style={{ fontWeight: 600, textAlign: "right" }}>{s2.otherCount} 份</div>
-              {salaryUnlocked && coDutyBonus[s2.id] > 0 && <><div style={{ color: "#B8860B" }}>共班分潤</div><div style={{ fontWeight: 600, textAlign: "right", color: "#B8860B" }}>+${coDutyBonus[s2.id].toLocaleString()}</div></>}
+              {salaryUnlocked && teamBonus[s2.id] > 0 && <><div style={{ color: "#2E7D6F" }}>全團分潤(徒手5%)</div><div style={{ fontWeight: 600, textAlign: "right", color: "#2E7D6F" }}>+${teamBonus[s2.id].toLocaleString()}</div></>}
+            </>)}
               <div style={{ gridColumn: "1/3", borderTop: "1px solid #E0D5C1", paddingTop: 8, marginTop: 4 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ color: "#8B7355", fontSize: 12 }}>應發薪資</span>
-                  <strong style={{ color: "#C2563A", fontSize: 16 }}>{salaryUnlocked ? `NT$ ${(s2.totalPay + coDutyBonus[s2.id]).toLocaleString()}` : "🔒 已隱藏"}</strong>
+                  <strong style={{ color: "#C2563A", fontSize: 16 }}>{salaryUnlocked ? `NT$ ${(s2.totalPay + teamBonus[s2.id]).toLocaleString()}` : "🔒 已隱藏"}</strong>
                 </div>
               </div>
             </div>
           </div>
         ))}
         {/* 盧老師 card */}
-        {(!salaryViewer || salaryViewer === "all") && <div onClick={() => setSelTh(selTh === "LU" ? null : "LU")}
+        {(!salaryViewer || salaryViewer === "all" || salaryViewer === "B") && <div onClick={() => setSelTh(selTh === "LU" ? null : "LU")}
           style={{ border: `1.5px solid ${selTh === "LU" ? LU_COLOR : LU_COLOR + "40"}`, borderRadius: 9, padding: 12, background: selTh === "LU" ? `${LU_COLOR}15` : `${LU_COLOR}08`, cursor: "pointer", transition: "all 0.15s" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
             <div style={{ width: 30, height: 30, borderRadius: "50%", background: LU_COLOR, color: "white", fontWeight: 700, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>盧</div>
@@ -1559,11 +1570,9 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
             {(() => { const items = selDetail.filter(a => getApptTreats(a).includes("taping") && a.onDuty && a.selfRef); return items.length > 0 ? <><div style={{ color: "#5B6ABF" }}>貼紮·班內自轉 (70%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPartialPay(a,"taping"),0).toLocaleString()}</div></> : null; })()}
             {(() => { const items = selDetail.filter(a => getApptTreats(a).includes("taping") && !a.onDuty && a.selfRef); return items.length > 0 ? <><div style={{ color: "#B8860B" }}>貼紮·班外自轉 (90%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPartialPay(a,"taping"),0).toLocaleString()}</div></> : null; })()}
             {selSummary.otherCount > 0 && <><div style={{ color: "#8B7355" }}>震波/雷射 (100/份)</div><div style={{ textAlign: "right" }}>{selSummary.otherCount} 份</div><div style={{ textAlign: "right" }}>NT$ {selSummary.otherPay.toLocaleString()}</div></>}
-            {coDutyBonus[selTh] > 0 && <><div style={{ color: "#B8860B" }}>共班分潤 (5%)</div><div style={{ textAlign: "right" }}>—</div><div style={{ textAlign: "right" }}>NT$ {coDutyBonus[selTh].toLocaleString()}</div></>}
-            </>)}
 
             <div style={{ gridColumn: "1/3", borderTop: "2px solid #3D2B1F", paddingTop: 8, marginTop: 4, fontWeight: 700, fontSize: 14, color: "#3D2B1F" }}>合計</div>
-            <div style={{ borderTop: "2px solid #3D2B1F", paddingTop: 8, marginTop: 4, textAlign: "right", fontWeight: 700, fontSize: 14, color: "#C2563A" }}>NT$ {(selTh === "LU" ? luSummary.totalPay : selSummary.totalPay + (coDutyBonus[selTh] || 0)).toLocaleString()}</div>
+            <div style={{ borderTop: "2px solid #3D2B1F", paddingTop: 8, marginTop: 4, textAlign: "right", fontWeight: 700, fontSize: 14, color: "#C2563A" }}>NT$ {(selTh === "LU" ? luSummary.totalPay : selSummary.totalPay + (teamBonus[selTh] || 0)).toLocaleString()}</div>
           </div>)}
         </div>
 
@@ -1615,13 +1624,13 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
                     <td colSpan={selTh === "LU" ? 7 : 9} style={{ padding: "8px", textAlign: "right", color: "#3D2B1F" }}>治療小計</td>
                     <td style={{ padding: "8px", textAlign: "right", color: "#3D2B1F", fontSize: 13 }}>NT$ {(selTh === "LU" ? luSummary.totalPay : selSummary.totalPay).toLocaleString()}</td>
                   </tr>
-                  {selTh !== "LU" && coDutyBonus[selTh] > 0 && <tr style={{ background: "#FFF8E6" }}>
-                    <td colSpan={9} style={{ padding: "6px 8px", textAlign: "right", color: "#B8860B", fontSize: 11 }}>共班分潤 (5%)</td>
-                    <td style={{ padding: "6px 8px", textAlign: "right", color: "#B8860B", fontWeight: 700, fontSize: 12 }}>+NT$ {coDutyBonus[selTh].toLocaleString()}</td>
+                  {selTh !== "LU" && teamBonus[selTh] > 0 && <tr style={{ background: "#E8F5F0" }}>
+                    <td colSpan={9} style={{ padding: "6px 8px", textAlign: "right", color: "#2E7D6F", fontSize: 11 }}>全團分潤（徒手5%）</td>
+                    <td style={{ padding: "6px 8px", textAlign: "right", color: "#2E7D6F", fontWeight: 700, fontSize: 12 }}>+NT$ {teamBonus[selTh].toLocaleString()}</td>
                   </tr>}
                   <tr style={{ background: "#F0E8D8", fontWeight: 700 }}>
                     <td colSpan={selTh === "LU" ? 7 : 9} style={{ padding: "8px", textAlign: "right", color: "#3D2B1F", fontSize: 13 }}>應發合計</td>
-                    <td style={{ padding: "8px", textAlign: "right", color: "#C2563A", fontSize: 14 }}>NT$ {(selTh === "LU" ? luSummary.totalPay : selSummary.totalPay + (coDutyBonus[selTh] || 0)).toLocaleString()}</td>
+                    <td style={{ padding: "8px", textAlign: "right", color: "#C2563A", fontSize: 14 }}>NT$ {(selTh === "LU" ? luSummary.totalPay : selSummary.totalPay + (teamBonus[selTh] || 0)).toLocaleString()}</td>
                   </tr>
                 </tfoot>}
               </table>
