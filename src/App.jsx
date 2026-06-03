@@ -1399,38 +1399,38 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
   }, [monthLuAppts]);
 
   // Co-duty bonus: for each checked manual therapy, other on-duty therapists get 5% of revenue
-  const coDutyBonus = useMemo(() => {
-    const bonus = {};
-    THERAPISTS.forEach(t => { bonus[t.id] = 0; });
+  const { coDutyBonusManual, coDutyBonusSwLaser, coDutyBonus } = useMemo(() => {
+    const manual = {}; const swLaser = {};
+    THERAPISTS.forEach(t => { manual[t.id] = 0; swLaser[t.id] = 0; });
     const dateCache = {};
     const getDate = (ds) => { if (!dateCache[ds]) dateCache[ds] = new Date(ds); return dateCache[ds]; };
 
-    // 1. 班內徒手 → 5% 分給共班者
-    const manualEligible = monthAppts.filter(a => a.checkedIn && a.onDuty && getApptTreats(a).includes("manual") && a.therapist !== "X");
-    manualEligible.forEach(a => {
+    // 1. 班內徒手 → 5%
+    monthAppts.filter(a => a.checkedIn && a.onDuty && getApptTreats(a).includes("manual") && a.therapist !== "X").forEach(a => {
       const revenue = calcRevenue(getApptManualDur(a), "manual");
       THERAPISTS.forEach(t => {
         if (t.id === a.therapist) return;
         if (getPeriodStateAt(t.id, getDate(a.date), a.time, cs) === "on") {
-          bonus[t.id] += Math.round(revenue * 0.05);
+          manual[t.id] += Math.round(revenue * 0.05);
         }
       });
     });
 
-    // 2. 震波/雷射 → 每份固定 $20 分給共班者（限班內）
-    const swLaserEligible = monthAppts.filter(a => a.checkedIn && a.onDuty && a.therapist !== "X" && (getApptTreats(a).includes("shockwave") || getApptTreats(a).includes("laser")));
-    swLaserEligible.forEach(a => {
+    // 2. 班內震波/雷射 → $25/份
+    monthAppts.filter(a => a.checkedIn && a.onDuty && a.therapist !== "X" && (getApptTreats(a).includes("shockwave") || getApptTreats(a).includes("laser"))).forEach(a => {
       const treats = getApptTreats(a);
       const doses = (treats.includes("shockwave") ? (a.swDoses || 1) : 0) + (treats.includes("laser") ? (a.laserDoses || 1) : 0);
       THERAPISTS.forEach(t => {
         if (t.id === a.therapist) return;
         if (getPeriodStateAt(t.id, getDate(a.date), a.time, cs) === "on") {
-          bonus[t.id] += doses * 20;
+          swLaser[t.id] += doses * 25;
         }
       });
     });
 
-    return bonus;
+    const total = {};
+    THERAPISTS.forEach(t => { total[t.id] = manual[t.id] + swLaser[t.id]; });
+    return { coDutyBonusManual: manual, coDutyBonusSwLaser: swLaser, coDutyBonus: total };
   }, [monthAppts, cs]);
 
   const selDetail = useMemo(() => {
@@ -1510,7 +1510,8 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
               <div style={{ color: "#8B7355" }}>徒手治療</div><div style={{ fontWeight: 600, textAlign: "right" }}>{s2.manualCount} 次 · {s2.manualMin} 分</div>
               <div style={{ color: "#8B7355" }}>貼紮</div><div style={{ fontWeight: 600, textAlign: "right" }}>{s2.tapingCount} 次</div>
               <div style={{ color: "#8B7355" }}>震波/雷射</div><div style={{ fontWeight: 600, textAlign: "right" }}>{s2.otherCount} 份</div>
-              {salaryUnlocked && coDutyBonus[s2.id] > 0 && <><div style={{ color: "#B8860B" }}>共班分潤</div><div style={{ fontWeight: 600, textAlign: "right", color: "#B8860B" }}>+${coDutyBonus[s2.id].toLocaleString()}</div></>}
+              {salaryUnlocked && coDutyBonusManual[s2.id] > 0 && <><div style={{ color: "#B8860B" }}>共班分潤(徒手5%)</div><div style={{ fontWeight: 600, textAlign: "right", color: "#B8860B" }}>+${coDutyBonusManual[s2.id].toLocaleString()}</div></>}
+              {salaryUnlocked && coDutyBonusSwLaser[s2.id] > 0 && <><div style={{ color: "#B8860B" }}>共班分潤(震波/雷射$25)</div><div style={{ fontWeight: 600, textAlign: "right", color: "#B8860B" }}>+${coDutyBonusSwLaser[s2.id].toLocaleString()}</div></>}
               <div style={{ gridColumn: "1/3", borderTop: "1px solid #E0D5C1", paddingTop: 8, marginTop: 4 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ color: "#8B7355", fontSize: 12 }}>應發薪資</span>
@@ -1612,7 +1613,7 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
                     </table>
                   </div>}
                   {swLaserDetail.length > 0 && <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#B8860B", marginBottom: 6 }}>震波／雷射 共班分潤 $20/份（{swLaserDetail.length} 筆）</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#B8860B", marginBottom: 6 }}>震波／雷射 共班分潤 $25/份（{swLaserDetail.length} 筆）</div>
                     <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif" }}>
                       <thead><tr style={{ background: "#F5EDDC" }}>{["日期","時間","患者","治療師","份數","分潤"].map(h => <th key={h} style={{ padding: "3px 6px", textAlign: "left", fontWeight: 600, color: "#5A4A3A", borderBottom: "1px solid #E0D5C1" }}>{h}</th>)}</tr></thead>
                       <tbody>{swLaserDetail.map((a, i) => {
@@ -1626,7 +1627,7 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
                           <td style={{ padding: "3px 6px", borderBottom: "1px solid #F0E8D8", fontWeight: 600 }}>{a.patient}</td>
                           <td style={{ padding: "3px 6px", borderBottom: "1px solid #F0E8D8" }}><span style={{ display: "inline-block", width: 14, height: 14, borderRadius: "50%", background: th2.color, color: "white", textAlign: "center", lineHeight: "14px", fontSize: 8, fontWeight: 700, marginRight: 3 }}>{thLabel(th2)}</span>{th2.name}</td>
                           <td style={{ padding: "3px 6px", borderBottom: "1px solid #F0E8D8" }}>{treatLabel} ({doses}份)</td>
-                          <td style={{ padding: "3px 6px", borderBottom: "1px solid #F0E8D8", fontWeight: 700, color: "#B8860B" }}>+{doses * 20}</td>
+                          <td style={{ padding: "3px 6px", borderBottom: "1px solid #F0E8D8", fontWeight: 700, color: "#B8860B" }}>+{doses * 25}</td>
                         </tr>);
                       })}</tbody>
                     </table>
