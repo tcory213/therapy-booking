@@ -1399,13 +1399,13 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
   }, [monthLuAppts]);
 
   // Co-duty bonus: for each checked manual therapy, other on-duty therapists get 5% of revenue
-  const { coDutyBonusManual, coDutyBonusSwLaser, coDutyBonus } = useMemo(() => {
-    const manual = {}; const swLaser = {};
-    THERAPISTS.forEach(t => { manual[t.id] = 0; swLaser[t.id] = 0; });
+  const { coDutyBonusManual, coDutyBonusSwLaser, coDutyBonus, teamBonus } = useMemo(() => {
+    const manual = {}; const swLaser = {}; const team = {};
+    THERAPISTS.forEach(t => { manual[t.id] = 0; swLaser[t.id] = 0; team[t.id] = 0; });
     const dateCache = {};
     const getDate = (ds) => { if (!dateCache[ds]) dateCache[ds] = new Date(ds); return dateCache[ds]; };
 
-    // 1. 班內徒手 → 5%
+    // 1. 班內徒手 → 共班5%（同時段班內才算）
     monthAppts.filter(a => a.checkedIn && a.onDuty && getApptTreats(a).includes("manual") && a.therapist !== "X").forEach(a => {
       const revenue = calcRevenue(getApptManualDur(a), "manual");
       THERAPISTS.forEach(t => {
@@ -1416,7 +1416,7 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
       });
     });
 
-    // 2. 班內震波/雷射 → $25/份
+    // 2. 班內震波/雷射 → 共班$25/份
     monthAppts.filter(a => a.checkedIn && a.onDuty && a.therapist !== "X" && (getApptTreats(a).includes("shockwave") || getApptTreats(a).includes("laser"))).forEach(a => {
       const treats = getApptTreats(a);
       const doses = (treats.includes("shockwave") ? (a.swDoses || 1) : 0) + (treats.includes("laser") ? (a.laserDoses || 1) : 0);
@@ -1428,9 +1428,18 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
       });
     });
 
+    // 3. 全團分潤：班內徒手 → 全部其他治療師各5%（不限共班）
+    monthAppts.filter(a => a.checkedIn && a.onDuty && getApptTreats(a).includes("manual") && a.therapist !== "X").forEach(a => {
+      const revenue = calcRevenue(getApptManualDur(a), "manual");
+      THERAPISTS.forEach(t => {
+        if (t.id === a.therapist) return;
+        team[t.id] += Math.round(revenue * 0.05);
+      });
+    });
+
     const total = {};
     THERAPISTS.forEach(t => { total[t.id] = manual[t.id] + swLaser[t.id]; });
-    return { coDutyBonusManual: manual, coDutyBonusSwLaser: swLaser, coDutyBonus: total };
+    return { coDutyBonusManual: manual, coDutyBonusSwLaser: swLaser, coDutyBonus: total, teamBonus: team };
   }, [monthAppts, cs]);
 
   const selDetail = useMemo(() => {
@@ -1512,10 +1521,11 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
               <div style={{ color: "#8B7355" }}>震波/雷射</div><div style={{ fontWeight: 600, textAlign: "right" }}>{s2.otherCount} 份</div>
               {salaryUnlocked && coDutyBonusManual[s2.id] > 0 && <><div style={{ color: "#B8860B" }}>共班分潤(徒手5%)</div><div style={{ fontWeight: 600, textAlign: "right", color: "#B8860B" }}>+${coDutyBonusManual[s2.id].toLocaleString()}</div></>}
               {salaryUnlocked && coDutyBonusSwLaser[s2.id] > 0 && <><div style={{ color: "#B8860B" }}>共班分潤(震波/雷射$25)</div><div style={{ fontWeight: 600, textAlign: "right", color: "#B8860B" }}>+${coDutyBonusSwLaser[s2.id].toLocaleString()}</div></>}
+              {salaryUnlocked && teamBonus[s2.id] > 0 && <><div style={{ color: "#2E7D6F" }}>全團分潤(徒手5%)</div><div style={{ fontWeight: 600, textAlign: "right", color: "#2E7D6F" }}>+${teamBonus[s2.id].toLocaleString()}</div></>}
               <div style={{ gridColumn: "1/3", borderTop: "1px solid #E0D5C1", paddingTop: 8, marginTop: 4 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ color: "#8B7355", fontSize: 12 }}>應發薪資</span>
-                  <strong style={{ color: "#C2563A", fontSize: 16 }}>{salaryUnlocked ? `NT$ ${(s2.totalPay + coDutyBonus[s2.id]).toLocaleString()}` : "🔒 已隱藏"}</strong>
+                  <strong style={{ color: "#C2563A", fontSize: 16 }}>{salaryUnlocked ? `NT$ ${(s2.totalPay + coDutyBonus[s2.id] + teamBonus[s2.id]).toLocaleString()}` : "🔒 已隱藏"}</strong>
                 </div>
               </div>
             </div>
@@ -1638,7 +1648,7 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
             </>)}
 
             <div style={{ gridColumn: "1/3", borderTop: "2px solid #3D2B1F", paddingTop: 8, marginTop: 4, fontWeight: 700, fontSize: 14, color: "#3D2B1F" }}>合計</div>
-            <div style={{ borderTop: "2px solid #3D2B1F", paddingTop: 8, marginTop: 4, textAlign: "right", fontWeight: 700, fontSize: 14, color: "#C2563A" }}>NT$ {(selTh === "LU" ? luSummary.totalPay : selSummary.totalPay + (coDutyBonus[selTh] || 0)).toLocaleString()}</div>
+            <div style={{ borderTop: "2px solid #3D2B1F", paddingTop: 8, marginTop: 4, textAlign: "right", fontWeight: 700, fontSize: 14, color: "#C2563A" }}>NT$ {(selTh === "LU" ? luSummary.totalPay : selSummary.totalPay + (coDutyBonus[selTh] || 0) + (teamBonus[selTh] || 0)).toLocaleString()}</div>
           </div>)}
         </div>
 
@@ -1691,12 +1701,16 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
                     <td style={{ padding: "8px", textAlign: "right", color: "#3D2B1F", fontSize: 13 }}>NT$ {(selTh === "LU" ? luSummary.totalPay : selSummary.totalPay).toLocaleString()}</td>
                   </tr>
                   {selTh !== "LU" && coDutyBonus[selTh] > 0 && <tr style={{ background: "#FFF8E6" }}>
-                    <td colSpan={9} style={{ padding: "6px 8px", textAlign: "right", color: "#B8860B", fontSize: 11 }}>共班分潤 (5%)</td>
+                    <td colSpan={9} style={{ padding: "6px 8px", textAlign: "right", color: "#B8860B", fontSize: 11 }}>共班分潤（徒手5%+震波雷射$25）</td>
                     <td style={{ padding: "6px 8px", textAlign: "right", color: "#B8860B", fontWeight: 700, fontSize: 12 }}>+NT$ {coDutyBonus[selTh].toLocaleString()}</td>
+                  </tr>}
+                  {selTh !== "LU" && teamBonus[selTh] > 0 && <tr style={{ background: "#E8F5F0" }}>
+                    <td colSpan={9} style={{ padding: "6px 8px", textAlign: "right", color: "#2E7D6F", fontSize: 11 }}>全團分潤（徒手5%）</td>
+                    <td style={{ padding: "6px 8px", textAlign: "right", color: "#2E7D6F", fontWeight: 700, fontSize: 12 }}>+NT$ {teamBonus[selTh].toLocaleString()}</td>
                   </tr>}
                   <tr style={{ background: "#F0E8D8", fontWeight: 700 }}>
                     <td colSpan={selTh === "LU" ? 7 : 9} style={{ padding: "8px", textAlign: "right", color: "#3D2B1F", fontSize: 13 }}>應發合計</td>
-                    <td style={{ padding: "8px", textAlign: "right", color: "#C2563A", fontSize: 14 }}>NT$ {(selTh === "LU" ? luSummary.totalPay : selSummary.totalPay + (coDutyBonus[selTh] || 0)).toLocaleString()}</td>
+                    <td style={{ padding: "8px", textAlign: "right", color: "#C2563A", fontSize: 14 }}>NT$ {(selTh === "LU" ? luSummary.totalPay : selSummary.totalPay + (coDutyBonus[selTh] || 0) + (teamBonus[selTh] || 0)).toLocaleString()}</td>
                   </tr>
                 </tfoot>}
               </table>
