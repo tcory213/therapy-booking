@@ -1350,7 +1350,7 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
   const [salaryPw, setSalaryPw] = useState("");
   const [salaryPwErr, setSalaryPwErr] = useState(false);
   const [salaryViewer, setSalaryViewer] = useState(null); // null | "all" | therapist id
-  const SALARY_PWS = { "tcory213": "all", "0128": "C", "1111": "D", "7412": "B", "0422": "A", "5992": "E" };
+  const SALARY_PWS = { "tcory213": "all", "0128": "C", "1111": "D", "7412": "B", "0412": "A", "5992": "E" };
 
   const [y, mo] = month.split("-").map(Number);
   const monthStart = `${y}-${String(mo).padStart(2, "0")}-01`;
@@ -1402,20 +1402,34 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
   const coDutyBonus = useMemo(() => {
     const bonus = {};
     THERAPISTS.forEach(t => { bonus[t.id] = 0; });
-    const checkedEligible = monthAppts.filter(a => a.checkedIn && a.onDuty && getApptTreats(a).includes("manual") && a.therapist !== "X");
-    if (!checkedEligible.length) return bonus;
     const dateCache = {};
-    checkedEligible.forEach(a => {
+    const getDate = (ds) => { if (!dateCache[ds]) dateCache[ds] = new Date(ds); return dateCache[ds]; };
+
+    // 1. 班內徒手 → 5% 分給共班者
+    const manualEligible = monthAppts.filter(a => a.checkedIn && a.onDuty && getApptTreats(a).includes("manual") && a.therapist !== "X");
+    manualEligible.forEach(a => {
       const revenue = calcRevenue(getApptManualDur(a), "manual");
-      if (!dateCache[a.date]) dateCache[a.date] = new Date(a.date);
-      const apptDate = dateCache[a.date];
       THERAPISTS.forEach(t => {
         if (t.id === a.therapist) return;
-        if (getPeriodStateAt(t.id, apptDate, a.time, cs) === "on") {
+        if (getPeriodStateAt(t.id, getDate(a.date), a.time, cs) === "on") {
           bonus[t.id] += Math.round(revenue * 0.05);
         }
       });
     });
+
+    // 2. 震波/雷射 → 每份固定 $20 分給共班者（限班內）
+    const swLaserEligible = monthAppts.filter(a => a.checkedIn && a.onDuty && a.therapist !== "X" && (getApptTreats(a).includes("shockwave") || getApptTreats(a).includes("laser")));
+    swLaserEligible.forEach(a => {
+      const treats = getApptTreats(a);
+      const doses = (treats.includes("shockwave") ? (a.swDoses || 1) : 0) + (treats.includes("laser") ? (a.laserDoses || 1) : 0);
+      THERAPISTS.forEach(t => {
+        if (t.id === a.therapist) return;
+        if (getPeriodStateAt(t.id, getDate(a.date), a.time, cs) === "on") {
+          bonus[t.id] += doses * 20;
+        }
+      });
+    });
+
     return bonus;
   }, [monthAppts, cs]);
 
@@ -1561,25 +1575,28 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
             {(() => { const items = selDetail.filter(a => getApptTreats(a).includes("taping") && !a.onDuty && a.selfRef); return items.length > 0 ? <><div style={{ color: "#B8860B" }}>貼紮·班外自轉 (90%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPartialPay(a,"taping"),0).toLocaleString()}</div></> : null; })()}
             {selSummary.otherCount > 0 && <><div style={{ color: "#8B7355" }}>震波/雷射 (100/份)</div><div style={{ textAlign: "right" }}>{selSummary.otherCount} 份</div><div style={{ textAlign: "right" }}>NT$ {selSummary.otherPay.toLocaleString()}</div></>}
             {coDutyBonus[selTh] > 0 && (() => {
-              const coDutyDetail = monthAppts.filter(a =>
+              const manualDetail = monthAppts.filter(a =>
                 a.checkedIn && a.onDuty && getApptTreats(a).includes("manual") && a.therapist !== "X" && a.therapist !== selTh &&
+                getPeriodStateAt(selTh, new Date(a.date), a.time, cs) === "on"
+              ).sort(sortByDateTime);
+              const swLaserDetail = monthAppts.filter(a =>
+                a.checkedIn && a.onDuty && a.therapist !== "X" && a.therapist !== selTh &&
+                (getApptTreats(a).includes("shockwave") || getApptTreats(a).includes("laser")) &&
                 getPeriodStateAt(selTh, new Date(a.date), a.time, cs) === "on"
               ).sort(sortByDateTime);
               return (<>
                 <div style={{ color: "#B8860B", display: "flex", alignItems: "center", gap: 6 }}>
-                  共班分潤 (5%)
+                  共班分潤
                   <button onClick={() => setShowCoDutyDetail(v => !v)} style={{ fontSize: 10, padding: "1px 7px", borderRadius: 4, border: "1px solid #B8860B", background: showCoDutyDetail ? "#B8860B" : "#FFF8E6", color: showCoDutyDetail ? "white" : "#B8860B", cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif", fontWeight: 600 }}>{showCoDutyDetail ? "收起" : "明細"}</button>
                 </div>
                 <div style={{ textAlign: "right" }}>—</div>
                 <div style={{ textAlign: "right" }}>NT$ {coDutyBonus[selTh].toLocaleString()}</div>
-                {showCoDutyDetail && <div style={{ gridColumn: "1/-1", background: "#FFF8E6", border: "1px solid #E8DCC0", borderRadius: 7, padding: "10px 12px", marginTop: 4 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#B8860B", marginBottom: 6 }}>共班分潤來源（{coDutyDetail.length} 筆）</div>
-                  <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif" }}>
-                    <thead><tr style={{ background: "#F5EDDC" }}>
-                      {["日期","時間","患者","治療師","時長","收費","分潤(5%)"].map(h => <th key={h} style={{ padding: "3px 6px", textAlign: "left", fontWeight: 600, color: "#5A4A3A", borderBottom: "1px solid #E0D5C1" }}>{h}</th>)}
-                    </tr></thead>
-                    <tbody>
-                      {coDutyDetail.map((a, i) => {
+                {showCoDutyDetail && <div style={{ gridColumn: "1/-1", background: "#FFF8E6", border: "1px solid #E8DCC0", borderRadius: 7, padding: "10px 12px", marginTop: 4, display: "flex", flexDirection: "column", gap: 12 }}>
+                  {manualDetail.length > 0 && <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#B8860B", marginBottom: 6 }}>徒手治療 共班分潤 5%（{manualDetail.length} 筆）</div>
+                    <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif" }}>
+                      <thead><tr style={{ background: "#F5EDDC" }}>{["日期","時間","患者","治療師","時長","收費","分潤(5%)"].map(h => <th key={h} style={{ padding: "3px 6px", textAlign: "left", fontWeight: 600, color: "#5A4A3A", borderBottom: "1px solid #E0D5C1" }}>{h}</th>)}</tr></thead>
+                      <tbody>{manualDetail.map((a, i) => {
                         const rev = calcRevenue(getApptManualDur(a), "manual");
                         const th2 = TH_MAP[a.therapist] || TH_MAP["X"];
                         return (<tr key={a.id} style={{ background: i % 2 === 0 ? "white" : "#FFFDF5" }}>
@@ -1591,9 +1608,29 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
                           <td style={{ padding: "3px 6px", borderBottom: "1px solid #F0E8D8" }}>{rev}</td>
                           <td style={{ padding: "3px 6px", borderBottom: "1px solid #F0E8D8", fontWeight: 700, color: "#B8860B" }}>+{Math.round(rev * 0.05)}</td>
                         </tr>);
-                      })}
-                    </tbody>
-                  </table>
+                      })}</tbody>
+                    </table>
+                  </div>}
+                  {swLaserDetail.length > 0 && <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#B8860B", marginBottom: 6 }}>震波／雷射 共班分潤 $20/份（{swLaserDetail.length} 筆）</div>
+                    <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif" }}>
+                      <thead><tr style={{ background: "#F5EDDC" }}>{["日期","時間","患者","治療師","份數","分潤"].map(h => <th key={h} style={{ padding: "3px 6px", textAlign: "left", fontWeight: 600, color: "#5A4A3A", borderBottom: "1px solid #E0D5C1" }}>{h}</th>)}</tr></thead>
+                      <tbody>{swLaserDetail.map((a, i) => {
+                        const treats = getApptTreats(a);
+                        const doses = (treats.includes("shockwave") ? (a.swDoses || 1) : 0) + (treats.includes("laser") ? (a.laserDoses || 1) : 0);
+                        const th2 = TH_MAP[a.therapist] || TH_MAP["X"];
+                        const treatLabel = [treats.includes("shockwave") ? `震波×${a.swDoses||1}` : null, treats.includes("laser") ? `雷射×${a.laserDoses||1}` : null].filter(Boolean).join(" ");
+                        return (<tr key={a.id} style={{ background: i % 2 === 0 ? "white" : "#FFFDF5" }}>
+                          <td style={{ padding: "3px 6px", borderBottom: "1px solid #F0E8D8" }}>{a.date}</td>
+                          <td style={{ padding: "3px 6px", borderBottom: "1px solid #F0E8D8" }}>{a.time}</td>
+                          <td style={{ padding: "3px 6px", borderBottom: "1px solid #F0E8D8", fontWeight: 600 }}>{a.patient}</td>
+                          <td style={{ padding: "3px 6px", borderBottom: "1px solid #F0E8D8" }}><span style={{ display: "inline-block", width: 14, height: 14, borderRadius: "50%", background: th2.color, color: "white", textAlign: "center", lineHeight: "14px", fontSize: 8, fontWeight: 700, marginRight: 3 }}>{thLabel(th2)}</span>{th2.name}</td>
+                          <td style={{ padding: "3px 6px", borderBottom: "1px solid #F0E8D8" }}>{treatLabel} ({doses}份)</td>
+                          <td style={{ padding: "3px 6px", borderBottom: "1px solid #F0E8D8", fontWeight: 700, color: "#B8860B" }}>+{doses * 20}</td>
+                        </tr>);
+                      })}</tbody>
+                    </table>
+                  </div>}
                 </div>}
               </>);
             })()}
