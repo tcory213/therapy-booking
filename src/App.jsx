@@ -328,6 +328,16 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
     if (!isAdmin && !idNum.trim() && !chartNum.trim()) { setErr("請輸入身分證字號或病歷號（至少填一項）"); return; }
     if (selTreats.length === 0) { setErr("請選擇至少一項治療項目"); return; }
     if (!selTh) { setErr("請選擇治療師"); return; }
+    if (!isAdmin) {
+      const idKey = idNum.trim().toUpperCase();
+      const chartKey = chartNum.trim();
+      const sameDayAppt = appts.find(a =>
+        a.date === ds &&
+        ((idKey && a.idNum && a.idNum.toUpperCase() === idKey) ||
+         (chartKey && a.chartNum && a.chartNum.toString() === chartKey))
+      );
+      if (sameDayAppt) { setErr("同一天已有其他預約，需先取消才能再預約"); return; }
+    }
     if (!validRange(time, totalDur)) { setErr("超出營業時間"); return; }
     const isUnspecified = selTh === "X";
     const onDuty = isUnspecified ? true : !selInfo?.isOff;
@@ -395,7 +405,7 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
 
     {selTreats.includes("manual") && <div><label style={lbl}>徒手治療時長</label>
       <div style={{ display: "flex", gap: 5 }}>
-        {DURATIONS.map(d => (<button key={d} onClick={() => { setManualDur(d); setSelTh(""); setErr(""); }} style={subBtnStyle(manualDur === d)}>{d} 分</button>))}
+        {DURATIONS.filter(d => isAdmin || selTreats.includes("manual") ? (isAdmin ? true : d <= 30) : true).map(d => (<button key={d} onClick={() => { setManualDur(d); setSelTh(""); setErr(""); }} style={subBtnStyle(manualDur === d)}>{d} 分</button>))}
       </div>
     </div>}
 
@@ -1362,7 +1372,7 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
   const [salaryPw, setSalaryPw] = useState("");
   const [salaryPwErr, setSalaryPwErr] = useState(false);
   const [salaryViewer, setSalaryViewer] = useState(null); // null | "all" | therapist id
-  const SALARY_PWS = { "tcory213": "all", "0128": "C", "1111": "D", "7412": "B", "0412": "A", "5992": "E" };
+  const SALARY_PWS = { "tcory213": "all", "0128": "C", "1111": "D", "7412": "B", "0412": "A", "0422": "A", "5992": "E" };
 
   const [y, mo] = month.split("-").map(Number);
   const monthStart = `${y}-${String(mo).padStart(2, "0")}-01`;
