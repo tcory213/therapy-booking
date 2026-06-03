@@ -1350,7 +1350,7 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
   const [salaryPw, setSalaryPw] = useState("");
   const [salaryPwErr, setSalaryPwErr] = useState(false);
   const [salaryViewer, setSalaryViewer] = useState(null); // null | "all" | therapist id
-  const SALARY_PWS = { "tcory213": "all", "0128": "C", "1111": "D" };
+  const SALARY_PWS = { "tcory213": "all", "0128": "C", "1111": "D", "7412": "B", "0422": "A", "5992": "E" };
 
   const [y, mo] = month.split("-").map(Number);
   const monthStart = `${y}-${String(mo).padStart(2, "0")}-01`;
@@ -1402,7 +1402,7 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
   const coDutyBonus = useMemo(() => {
     const bonus = {};
     THERAPISTS.forEach(t => { bonus[t.id] = 0; });
-    const checkedEligible = monthAppts.filter(a => a.checkedIn && getApptTreats(a).includes("manual") && a.therapist !== "X");
+    const checkedEligible = monthAppts.filter(a => a.checkedIn && a.onDuty && getApptTreats(a).includes("manual") && a.therapist !== "X");
     if (!checkedEligible.length) return bonus;
     const dateCache = {};
     checkedEligible.forEach(a => {
@@ -1507,7 +1507,7 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
           </div>
         ))}
         {/* 盧老師 card */}
-        {(!salaryViewer || salaryViewer === "all") && <div onClick={() => setSelTh(selTh === "LU" ? null : "LU")}
+        {(!salaryViewer || salaryViewer === "all" || salaryViewer === "B") && <div onClick={() => setSelTh(selTh === "LU" ? null : "LU")}
           style={{ border: `1.5px solid ${selTh === "LU" ? LU_COLOR : LU_COLOR + "40"}`, borderRadius: 9, padding: 12, background: selTh === "LU" ? `${LU_COLOR}15` : `${LU_COLOR}08`, cursor: "pointer", transition: "all 0.15s" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 10 }}>
             <div style={{ width: 30, height: 30, borderRadius: "50%", background: LU_COLOR, color: "white", fontWeight: 700, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center" }}>盧</div>
@@ -1562,7 +1562,7 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
             {selSummary.otherCount > 0 && <><div style={{ color: "#8B7355" }}>震波/雷射 (100/份)</div><div style={{ textAlign: "right" }}>{selSummary.otherCount} 份</div><div style={{ textAlign: "right" }}>NT$ {selSummary.otherPay.toLocaleString()}</div></>}
             {coDutyBonus[selTh] > 0 && (() => {
               const coDutyDetail = monthAppts.filter(a =>
-                a.checkedIn && getApptTreats(a).includes("manual") && a.therapist !== "X" && a.therapist !== selTh &&
+                a.checkedIn && a.onDuty && getApptTreats(a).includes("manual") && a.therapist !== "X" && a.therapist !== selTh &&
                 getPeriodStateAt(selTh, new Date(a.date), a.time, cs) === "on"
               ).sort(sortByDateTime);
               return (<>
