@@ -328,6 +328,7 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
     if (!isAdmin && !idNum.trim() && !chartNum.trim()) { setErr("請輸入身分證字號或病歷號（至少填一項）"); return; }
     if (selTreats.length === 0) { setErr("請選擇至少一項治療項目"); return; }
     if (!selTh) { setErr("請選擇治療師"); return; }
+    if (!isAdmin && selTreats.includes("manual") && !selTreats.includes("shockwave") && !selTreats.includes("laser") && manualDur > 30) { setErr("徒手治療僅限 15 或 30 分鐘"); return; }
     if (!isAdmin) {
       const idKey = idNum.trim().toUpperCase();
       const chartKey = chartNum.trim();
