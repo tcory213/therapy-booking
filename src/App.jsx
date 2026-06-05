@@ -973,10 +973,10 @@ function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainS
           </div>); };
         return (<tr key={time} style={{ cursor: "pointer", ...(isBr ? { borderTop: "3px solid #C2563A" } : {}) }}><td onClick={() => !filterBlack && !auditBlack && onCellClick(selDate, time)} style={{ padding: "3px 8px", textAlign: "center", background: isH ? "#F0E8D8" : "#F8F2E6", borderRight: "2px solid #D4C5A9", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", fontWeight: isH ? 700 : 400, color: isH ? "#3D2B1F" : "#8B7355", height: 30 }}>{time}</td>
           <td style={{ padding: 0, minHeight: 30, borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5", background: auditBlack ? "#2A2A2A" : filterBlack ? "#2A2A2A" : closed ? "#2A2A2A" : "#FFFDF5" }}>
-            {!filterBlack && !auditBlack && starts.map(as => renderApptRow(as, false))}
-            {!filterBlack && !auditBlack && all.filter(aa => aa.time !== time).map(aa => renderApptRow(aa, true))}
-            {!filterBlack && !auditBlack && !occ && closed && <div style={{ padding: "0 10px", height: 30, display: "flex", alignItems: "center", fontSize: 13, color: "rgba(255,255,255,0.5)" }}>已關閉</div>}
-            {!filterBlack && !auditBlack && !occ && !closed && <div onClick={() => onCellClick(selDate, time)} style={{ padding: "0 10px", height: 30, display: "flex", alignItems: "center", fontSize: 13, color: "#C4B49A", cursor: "pointer" }}
+            {!filterBlack && !auditBlack && !auditActive && starts.map(as => renderApptRow(as, false))}
+            {!filterBlack && !auditBlack && !auditActive && all.filter(aa => aa.time !== time).map(aa => renderApptRow(aa, true))}
+            {!filterBlack && !auditBlack && !auditActive && !occ && closed && <div style={{ padding: "0 10px", height: 30, display: "flex", alignItems: "center", fontSize: 13, color: "rgba(255,255,255,0.5)" }}>已關閉</div>}
+            {!filterBlack && !auditBlack && !auditActive && !occ && !closed && <div onClick={() => onCellClick(selDate, time)} style={{ padding: "0 10px", height: 30, display: "flex", alignItems: "center", fontSize: 13, color: "#C4B49A", cursor: "pointer" }}
               onMouseEnter={e => e.currentTarget.style.color = "#8B7355"} onMouseLeave={e => e.currentTarget.style.color = "#C4B49A"}>可預約</div>}
             {(auditBlack || filterBlack) && <div style={{ height: 30 }} />}
             {auditActive && hasMyCheckedIn && (auditTh === "all" ? all.filter(a => a.checkedIn) : all.filter(a => a.therapist === auditTh && a.checkedIn)).map(as => renderApptRow(as, false))}
