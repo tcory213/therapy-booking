@@ -867,7 +867,7 @@ function AdminWeekGrid({ appts, selDate, onCellClick, onApptClick, filterTh, cs,
 }
 
 function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainSlotCfg, setMainSlotCfg, luSlotCfg, filterTh, cs }) {
-  const [auditTh, setAuditTh] = useState("all"); // 對帳模式: "all" | therapistId | null(off)
+  const [auditTh, setAuditTh] = useState(null); // 對帳模式: null(off) | "all" | therapistId
   const ds = fd(selDate); const dayA = useMemo(() => appts.filter(a => a.date === ds), [appts, ds]);
   const getStarts = useCallback(time => dayA.filter(a => a.time === time), [dayA]);
   const getAllAt = useCallback(time => { const m = toM(time); return dayA.filter(a => m >= toM(a.time) && m < toM(a.time) + a.duration); }, [dayA]);
@@ -929,8 +929,7 @@ function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainS
   return (<div>
     {/* 對帳專用 toolbar */}
     <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
-      <button onClick={() => setAuditTh(auditTh ? null : "all")} style={{ padding: "5px 12px", borderRadius: 7, border: auditTh ? "2px solid #C2563A" : "1.5px solid #D4C5A9", background: auditTh ? "#FFF0EB" : "#FFFDF5", color: auditTh ? "#C2563A" : "#5A4A3A", fontWeight: auditTh ? 700 : 500, cursor: "pointer", fontSize: 12, fontFamily: "'Noto Sans TC', sans-serif" }}>🔍 對帳專用</button>
-      {auditTh && <>
+      <button onClick={() => setAuditTh(auditTh ? null : "all")} style={{ padding: "5px 12px", borderRadius: 7, border: auditTh ? "2px solid #C2563A" : "1.5px solid #D4C5A9", background: auditTh ? "#FFF0EB" : "#FFFDF5", color: auditTh ? "#C2563A" : "#5A4A3A", fontWeight: auditTh ? 700 : 500, cursor: "pointer", fontSize: 12, fontFamily: "'Noto Sans TC', sans-serif" }}>🔍 對帳專用</button>      {auditTh && <>
         <button onClick={() => setAuditTh("all")} style={{ padding: "5px 10px", borderRadius: 7, border: auditTh === "all" ? "2px solid #3D2B1F" : "1.5px solid #D4C5A9", background: auditTh === "all" ? "#F0E8D8" : "#FFFDF5", color: "#3D2B1F", fontWeight: auditTh === "all" ? 700 : 500, fontSize: 12, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>全體</button>
         {THERAPISTS.map(t => (<button key={t.id} onClick={() => setAuditTh(auditTh === t.id ? "all" : t.id)} style={{ width: 32, height: 32, borderRadius: "50%", border: auditTh === t.id ? "3px solid #3D2B1F" : "2px solid transparent", background: t.color, color: "white", fontWeight: 700, fontSize: 11, cursor: "pointer", outline: "none" }}>{t.label}</button>))}
         <button onClick={() => setAuditTh(null)} style={{ padding: "5px 10px", borderRadius: 7, border: "1.5px solid #D4C5A9", background: "#FFFDF5", color: "#8B7355", fontSize: 11, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>✕ 離開對帳</button>
