@@ -110,7 +110,15 @@ function onDutySlotConflict(appts, ds, time, dur, exId) { return slotConflict(ap
 function luSlotOccupied(appts, ds, time, dur, exId) { return slotConflict(appts, ds, time, dur, exId, () => true); }
 function bufferConflictGeneric(appts, ds, time, dur, exId, filterFn) {
   const ns = toM(time), ne = ns + dur;
-  return appts.some(a => a.id !== exId && a.date === ds && filterFn(a) && (toM(a.time) + a.duration === ns || ne === toM(a.time)));
+  return appts.some(a => {
+    if (a.id === exId || a.date !== ds || !filterFn(a)) return false;
+    const as = toM(a.time), ae = as + a.duration;
+    // After this appt: new slot starts too close → need gap = a.duration (15 or 30)
+    if (ae > ns - a.duration && ae <= ns) return true;
+    // Before this appt: new slot ends too close → need gap = a.duration (15 or 30)
+    if (ne > as && ne <= as + a.duration) return true;
+    return false;
+  });
 }
 function bufferConflict(appts, ds, time, dur, tid, exId) { return bufferConflictGeneric(appts, ds, time, dur, exId, a => a.therapist === tid); }
 function luBufferConflict(appts, ds, time, dur, exId) { return bufferConflictGeneric(appts, ds, time, dur, exId, () => true); }
@@ -859,7 +867,7 @@ function AdminWeekGrid({ appts, selDate, onCellClick, onApptClick, filterTh, cs,
 }
 
 function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainSlotCfg, setMainSlotCfg, luSlotCfg, filterTh, cs }) {
-  const [auditTh, setAuditTh] = useState(null); // 對帳模式選定的治療師
+  const [auditTh, setAuditTh] = useState("all"); // 對帳模式: "all" | therapistId | null(off)
   const ds = fd(selDate); const dayA = useMemo(() => appts.filter(a => a.date === ds), [appts, ds]);
   const getStarts = useCallback(time => dayA.filter(a => a.time === time), [dayA]);
   const getAllAt = useCallback(time => { const m = toM(time); return dayA.filter(a => m >= toM(a.time) && m < toM(a.time) + a.duration); }, [dayA]);
@@ -921,9 +929,13 @@ function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainS
   return (<div>
     {/* 對帳專用 toolbar */}
     <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
-      <button onClick={() => setAuditTh(auditTh ? null : "pick")} style={{ padding: "5px 12px", borderRadius: 7, border: auditTh ? "2px solid #C2563A" : "1.5px solid #D4C5A9", background: auditTh ? "#FFF0EB" : "#FFFDF5", color: auditTh ? "#C2563A" : "#5A4A3A", fontWeight: auditTh ? 700 : 500, cursor: "pointer", fontSize: 12, fontFamily: "'Noto Sans TC', sans-serif" }}>🔍 對帳專用{auditTh && auditTh !== "pick" ? `：${TH_MAP[auditTh]?.name}` : ""}</button>
-      {auditTh && THERAPISTS.map(t => (<button key={t.id} onClick={() => setAuditTh(auditTh === t.id ? null : t.id)} style={{ width: 32, height: 32, borderRadius: "50%", border: auditTh === t.id ? "3px solid #3D2B1F" : "2px solid transparent", background: t.color, color: "white", fontWeight: 700, fontSize: 11, cursor: "pointer", outline: "none" }}>{t.label}</button>))}
-      {auditTh && <button onClick={() => setAuditTh(null)} style={{ padding: "5px 10px", borderRadius: 7, border: "1.5px solid #D4C5A9", background: "#FFFDF5", color: "#8B7355", fontSize: 11, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>✕ 離開對帳</button>}
+      <button onClick={() => setAuditTh(auditTh ? null : "all")} style={{ padding: "5px 12px", borderRadius: 7, border: auditTh ? "2px solid #C2563A" : "1.5px solid #D4C5A9", background: auditTh ? "#FFF0EB" : "#FFFDF5", color: auditTh ? "#C2563A" : "#5A4A3A", fontWeight: auditTh ? 700 : 500, cursor: "pointer", fontSize: 12, fontFamily: "'Noto Sans TC', sans-serif" }}>🔍 對帳專用</button>
+      {auditTh && <>
+        <button onClick={() => setAuditTh("all")} style={{ padding: "5px 10px", borderRadius: 7, border: auditTh === "all" ? "2px solid #3D2B1F" : "1.5px solid #D4C5A9", background: auditTh === "all" ? "#F0E8D8" : "#FFFDF5", color: "#3D2B1F", fontWeight: auditTh === "all" ? 700 : 500, fontSize: 12, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>全體</button>
+        {THERAPISTS.map(t => (<button key={t.id} onClick={() => setAuditTh(auditTh === t.id ? "all" : t.id)} style={{ width: 32, height: 32, borderRadius: "50%", border: auditTh === t.id ? "3px solid #3D2B1F" : "2px solid transparent", background: t.color, color: "white", fontWeight: 700, fontSize: 11, cursor: "pointer", outline: "none" }}>{t.label}</button>))}
+        <button onClick={() => setAuditTh(null)} style={{ padding: "5px 10px", borderRadius: 7, border: "1.5px solid #D4C5A9", background: "#FFFDF5", color: "#8B7355", fontSize: 11, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>✕ 離開對帳</button>
+      </>}
+      {auditTh && auditTh !== "all" && <span style={{ fontSize: 12, color: "#C2563A", fontWeight: 600 }}>：{TH_MAP[auditTh]?.name}</span>}
     </div>
     <div style={{ display: "flex", gap: 12, marginBottom: 10, padding: "8px 14px", background: "#FFFDF5", borderRadius: 7, border: "1px solid #E0D5C1", fontSize: 14, color: "#5A4A3A", flexWrap: "wrap", alignItems: "center" }}>
       <span>預約：<strong>{stats.t}</strong></span><span>時數：<strong>{stats.m}</strong>分</span><span style={{ color: "#2E7D6F" }}>班內：<strong>{stats.on}</strong></span><span style={{ color: "#C2563A" }}>班外：<strong>{stats.off}</strong></span><span style={{ color: "#5B6ABF" }}>自轉：<strong>{stats.sr}</strong></span>
@@ -931,9 +943,12 @@ function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainS
     </div>
     <div style={{ borderRadius: 9, border: "1px solid #E0D5C1", overflow: "hidden" }}><table style={{ borderCollapse: "collapse", width: "100%", fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}><thead><tr><th style={{ padding: "9px 8px", background: "#3D2B1F", color: "#F5EDDC", width: 55, textAlign: "center", borderRight: "2px solid #5A4A3A" }}>時間</th><th style={{ padding: "9px 8px", background: "#3D2B1F", color: "#F5EDDC", textAlign: "left" }}>預約內容</th><th style={{ padding: "9px 8px", background: "#3D2B1F", color: "#F5EDDC", width: 50, textAlign: "center" }}>開關</th></tr></thead><tbody>
       {SLOTS.map(time => { const isH = time.endsWith(":00"); const isBr = time === "14:00"; const starts = getStarts(time); const all = getAllAt(time); const occ = all.length > 0;
-        // 對帳模式：只留選定治療師的已報到預約亮著，其他全黑
-        const auditActive = auditTh && auditTh !== "pick";
-        const hasMyCheckedIn = auditActive && all.some(a => a.therapist === auditTh && a.checkedIn);
+        const auditActive = !!auditTh;
+        const hasMyCheckedIn = auditActive && (
+          auditTh === "all"
+            ? all.some(a => a.checkedIn)
+            : all.some(a => a.therapist === auditTh && a.checkedIn)
+        );
         const auditBlack = auditActive && !hasMyCheckedIn;
         const fixedClosed2 = isAdminFixedClosed(selDate, time);
         const k = `${ds}-${time}`;
@@ -965,7 +980,7 @@ function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainS
             {!filterBlack && !auditBlack && !occ && !closed && <div onClick={() => onCellClick(selDate, time)} style={{ padding: "0 10px", height: 30, display: "flex", alignItems: "center", fontSize: 13, color: "#C4B49A", cursor: "pointer" }}
               onMouseEnter={e => e.currentTarget.style.color = "#8B7355"} onMouseLeave={e => e.currentTarget.style.color = "#C4B49A"}>可預約</div>}
             {(auditBlack || filterBlack) && <div style={{ height: 30 }} />}
-            {auditActive && hasMyCheckedIn && all.filter(a => a.therapist === auditTh && a.checkedIn).map(as => renderApptRow(as, false))}
+            {auditActive && hasMyCheckedIn && (auditTh === "all" ? all.filter(a => a.checkedIn) : all.filter(a => a.therapist === auditTh && a.checkedIn)).map(as => renderApptRow(as, false))}
           </td>
           <td style={{ textAlign: "center", borderTop: isH ? "1px solid #D4C5A9" : "1px solid #EDE5D5" }}>
             <button onClick={() => toggleSlot(time)} style={{ padding: "2px 8px", borderRadius: 4, border: "none", cursor: "pointer", background: closed ? "#EDE5D5" : "#3D2B1FDD", color: closed ? "#B5A898" : "white", fontSize: 9, fontWeight: 600, fontFamily: "'Noto Sans TC', sans-serif" }}>{toggleLabel}</button>
@@ -1625,14 +1640,14 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
               <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif" }}>
                 <thead><tr style={{ background: "#F5F0E5" }}>
                   {(selTh === "LU"
-                    ? (salaryUnlocked ? ["日期", "時間", "患者", "生日", "時長", "轉介", "收費", "薪資"] : ["日期", "時間", "患者", "生日", "時長", "轉介"])
-                    : (salaryUnlocked ? ["日期", "時間", "患者", "生日", "項目", "時長", "班別", "轉介", "收費", "薪資"] : ["日期", "時間", "患者", "生日", "項目", "時長", "班別", "轉介"])
+                    ? (salaryUnlocked ? ["薪資", "日期", "時間", "患者", "時長", "轉介", "收費"] : ["日期", "時間", "患者", "時長", "轉介"])
+                    : (salaryUnlocked ? ["薪資", "日期", "時間", "患者", "項目", "時長", "班別", "轉介", "收費"] : ["日期", "時間", "患者", "項目", "時長", "班別", "轉介"])
                   ).map(h => (
                     <th key={h} style={{ padding: "6px 8px", borderBottom: "1.5px solid #D4C5A9", textAlign: "left", fontWeight: 600, color: "#5A4A3A", whiteSpace: "nowrap" }}>{h}</th>
                   ))}
                 </tr></thead>
                 <tbody>
-                  {selDetail.map(a => {
+                  {selDetail.map((a, idx) => {
                     const isLu = selTh === "LU";
                     const ttLabel = isLu ? "徒手" : getApptTreatLabel(a);
                     const treats = getApptTreats(a);
@@ -1644,25 +1659,26 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
                     }
                     const showRevenue = isLu || treats.includes("manual") || treats.includes("taping");
                     const pay = isLu ? calcLuPay(a) : calcPay(a);
+                    const prevDate = idx > 0 ? selDetail[idx - 1].date : null;
+                    const dayBorder = prevDate && prevDate !== a.date ? "3px solid #C4A882" : "1px solid #EDE5D5";
                     return (
-                      <tr key={a.id} style={{ borderBottom: "1px solid #EDE5D5" }}>
+                      <tr key={a.id} style={{ borderTop: dayBorder }}>
+                        {salaryUnlocked && <td style={{ padding: "5px 8px", textAlign: "right", fontWeight: 700, color: "#C2563A" }}>${pay}</td>}
                         <td style={{ padding: "5px 8px", whiteSpace: "nowrap" }}>{a.date}</td>
                         <td style={{ padding: "5px 8px" }}>{a.time}</td>
                         <td style={{ padding: "5px 8px", fontWeight: 600 }}>{a.patient}</td>
-                        <td style={{ padding: "5px 8px", color: "#8B7355" }}>{a.birthday}</td>
                         {!isLu && <td style={{ padding: "5px 8px" }}><span style={{ padding: "1px 5px", borderRadius: 3, background: "#F5F0E5", fontSize: 10 }}>{ttLabel}</span></td>}
                         <td style={{ padding: "5px 8px" }}>{a.duration}分</td>
                         {!isLu && <td style={{ padding: "5px 8px" }}><span style={{ color: a.onDuty ? "#2E7D6F" : "#C2563A", fontWeight: 600 }}>{a.onDuty ? "班內" : "班外"}</span></td>}
                         <td style={{ padding: "5px 8px" }}><span style={{ color: a.selfRef ? "#5B6ABF" : "#B8860B", fontWeight: 600 }}>{a.selfRef ? "自轉" : "非自轉"}</span></td>
                         {salaryUnlocked && <td style={{ padding: "5px 8px", textAlign: "right" }}>{showRevenue ? `$${revenue}` : "-"}</td>}
-                        {salaryUnlocked && <td style={{ padding: "5px 8px", textAlign: "right", fontWeight: 700, color: "#C2563A" }}>${pay}</td>}
                       </tr>
                     );
                   })}
                 </tbody>
                 {salaryUnlocked && <tfoot>
                   <tr style={{ background: "#F5F0E5", fontWeight: 700 }}>
-                    <td colSpan={selTh === "LU" ? 7 : 9} style={{ padding: "8px", textAlign: "right", color: "#3D2B1F" }}>治療小計</td>
+                    <td colSpan={selTh === "LU" ? (salaryUnlocked ? 6 : 4) : (salaryUnlocked ? 8 : 6)} style={{ padding: "8px", textAlign: "right", color: "#3D2B1F" }}>治療小計</td>
                     <td style={{ padding: "8px", textAlign: "right", color: "#3D2B1F", fontSize: 13 }}>NT$ {(selTh === "LU" ? luSummary.totalPay : selSummary.totalPay).toLocaleString()}</td>
                   </tr>
                   {selTh !== "LU" && teamBonus[selTh] > 0 && <tr style={{ background: "#E8F5F0" }}>
