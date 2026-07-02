@@ -1157,6 +1157,57 @@ function AdminLookup({ appts, luAppts, onApptClick, onLuApptClick }) {
     );
   });
 
+  const handlePrint = () => {
+    const name = results[0]?.patient || "查詢結果";
+    const chartNum = results[0]?.chartNum ? `#${results[0].chartNum}` : (results[0]?.birthday ? `生日 ${results[0].birthday}` : "");
+    const printHtml = `
+      <html><head><meta charset="utf-8"><title>查詢結果</title>
+      <style>
+        body { font-family: 'Noto Sans TC', sans-serif; font-size: 12px; color: #222; padding: 16px; }
+        h2 { font-size: 16px; margin: 0 0 4px; }
+        .sub { font-size: 11px; color: #666; margin-bottom: 12px; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #F5F0E5; padding: 5px 8px; text-align: left; font-size: 11px; border-bottom: 2px solid #C4A882; }
+        td { padding: 5px 8px; border-bottom: 1px solid #EDE5D5; font-size: 12px; }
+        .past td { color: #999; }
+        .section { font-size: 11px; font-weight: 700; padding: 4px 8px; background: #E8F5F0; margin-top: 10px; }
+        .section-past { background: #F8F4EE; color: #8B7355; }
+        .badge { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 10px; margin-right: 3px; }
+        .badge-green { background: #E6F5EE; color: #2E7D6F; font-weight: 700; }
+        .badge-blue { background: #EEEEFF; color: #5B6ABF; font-weight: 700; }
+      </style></head>
+      <body>
+        <h2>查詢結果：${name} ${chartNum}</h2>
+        <div class="sub">共 ${results.length} 筆｜列印時間：${new Date().toLocaleString("zh-TW")}</div>
+        ${future.length > 0 ? `
+          <div class="section">📅 今日起的預約（${future.length} 筆）</div>
+          <table><thead><tr><th>日期</th><th>時間</th><th>患者</th><th>病歷號</th><th>治療師</th><th>時長</th><th>項目</th><th>班別</th><th>轉介</th><th>狀態</th></tr></thead><tbody>
+          ${future.map(a => {
+            const isLu = a.sys === "lu";
+            const thObj = isLu ? null : (TH_MAP[a.therapist] || TH_MAP["X"]);
+            const thName = isLu ? "盧獨立" : (thObj?.name || "");
+            const badges = [a.checkedIn ? '<span class="badge badge-green">✓到</span>' : '', a.reconfirm ? '<span class="badge badge-blue">再確認</span>' : ''].join('');
+            return `<tr><td>${a.date}</td><td>${a.time}</td><td><b>${a.patient}</b></td><td>${a.chartNum ? '#'+a.chartNum : ''}</td><td>${thName}</td><td>${a.duration}分</td><td>${getApptTreatLabel(a)}</td><td>${isLu ? "班外" : (a.onDuty ? "班內" : "班外")}</td><td>${a.selfRef ? "自轉" : "非自轉"}</td><td>${badges}</td></tr>`;
+          }).join('')}
+          </tbody></table>` : ''}
+        ${past.length > 0 ? `
+          <div class="section section-past">🗂 歷史紀錄（${past.length} 筆）</div>
+          <table><thead><tr><th>日期</th><th>時間</th><th>患者</th><th>病歷號</th><th>治療師</th><th>時長</th><th>項目</th><th>班別</th><th>轉介</th><th>狀態</th></tr></thead><tbody>
+          ${past.map(a => {
+            const isLu = a.sys === "lu";
+            const thObj = isLu ? null : (TH_MAP[a.therapist] || TH_MAP["X"]);
+            const thName = isLu ? "盧獨立" : (thObj?.name || "");
+            const badges = [a.checkedIn ? '<span class="badge badge-green">✓到</span>' : '', a.reconfirm ? '<span class="badge badge-blue">再確認</span>' : ''].join('');
+            return `<tr class="past"><td>${a.date}</td><td>${a.time}</td><td><b>${a.patient}</b></td><td>${a.chartNum ? '#'+a.chartNum : ''}</td><td>${thName}</td><td>${a.duration}分</td><td>${getApptTreatLabel(a)}</td><td>${isLu ? "班外" : (a.onDuty ? "班內" : "班外")}</td><td>${a.selfRef ? "自轉" : "非自轉"}</td><td>${badges}</td></tr>`;
+          }).join('')}
+          </tbody></table>` : ''}
+      </body></html>`;
+    const win = window.open("", "_blank");
+    win.document.write(printHtml);
+    win.document.close();
+    win.print();
+  };
+
   return (
     <div>
       <div style={{ display: "flex", gap: 6, marginBottom: 12, alignItems: "center", flexWrap: "wrap" }}>
@@ -1180,6 +1231,9 @@ function AdminLookup({ appts, luAppts, onApptClick, onLuApptClick }) {
 
       {results.length > 0 && (
         <div style={{ borderRadius: 9, border: "1px solid #E0D5C1", overflow: "hidden" }}>
+          <div style={{ display: "flex", justifyContent: "flex-end", padding: "6px 10px", background: "#F8F4EE", borderBottom: "1px solid #E0D5C1" }}>
+            <button onClick={handlePrint} style={{ padding: "5px 14px", borderRadius: 6, border: "1.5px solid #3D2B1F", background: "#FFFDF5", color: "#3D2B1F", cursor: "pointer", fontWeight: 600, fontSize: 13, fontFamily: "'Noto Sans TC', sans-serif" }}>🖨️ 列印</button>
+          </div>
           {/* 今日以後 */}
           {future.length > 0 && (
             <div>
