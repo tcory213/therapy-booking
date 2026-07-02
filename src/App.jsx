@@ -1189,18 +1189,7 @@ function AdminLookup({ appts, luAppts, onApptClick, onLuApptClick }) {
             const badges = [a.checkedIn ? '<span class="badge badge-green">✓到</span>' : '', a.reconfirm ? '<span class="badge badge-blue">再確認</span>' : ''].join('');
             return `<tr><td>${a.date}</td><td>${a.time}</td><td><b>${a.patient}</b></td><td>${a.chartNum ? '#'+a.chartNum : ''}</td><td>${thName}</td><td>${a.duration}分</td><td>${getApptTreatLabel(a)}</td><td>${isLu ? "班外" : (a.onDuty ? "班內" : "班外")}</td><td>${a.selfRef ? "自轉" : "非自轉"}</td><td>${badges}</td></tr>`;
           }).join('')}
-          </tbody></table>` : ''}
-        ${past.length > 0 ? `
-          <div class="section section-past">🗂 歷史紀錄（${past.length} 筆）</div>
-          <table><thead><tr><th>日期</th><th>時間</th><th>患者</th><th>病歷號</th><th>治療師</th><th>時長</th><th>項目</th><th>班別</th><th>轉介</th><th>狀態</th></tr></thead><tbody>
-          ${past.map(a => {
-            const isLu = a.sys === "lu";
-            const thObj = isLu ? null : (TH_MAP[a.therapist] || TH_MAP["X"]);
-            const thName = isLu ? "盧獨立" : (thObj?.name || "");
-            const badges = [a.checkedIn ? '<span class="badge badge-green">✓到</span>' : '', a.reconfirm ? '<span class="badge badge-blue">再確認</span>' : ''].join('');
-            return `<tr class="past"><td>${a.date}</td><td>${a.time}</td><td><b>${a.patient}</b></td><td>${a.chartNum ? '#'+a.chartNum : ''}</td><td>${thName}</td><td>${a.duration}分</td><td>${getApptTreatLabel(a)}</td><td>${isLu ? "班外" : (a.onDuty ? "班內" : "班外")}</td><td>${a.selfRef ? "自轉" : "非自轉"}</td><td>${badges}</td></tr>`;
-          }).join('')}
-          </tbody></table>` : ''}
+          </tbody></table>` : '<p style="color:#888">今日起無預約紀錄</p>'}
       </body></html>`;
     const win = window.open("", "_blank");
     win.document.write(printHtml);
