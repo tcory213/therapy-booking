@@ -255,10 +255,31 @@ const lbl = { display: "block", marginBottom: 4, fontSize: 11, fontWeight: 600, 
 const actionBtn = { flex: 1, padding: 9, borderRadius: 7, cursor: "pointer", fontWeight: 600, fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif" };
 
 /* ═══════════════════════════════════════════ Main Booking Form ═══════════════════════════════════════════ */
-function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlotCfg, addExtra }) {
+function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlotCfg, addExtra, patientDB = [] }) {
   const [patient, setPatient] = useState(""); const [bday, setBday] = useState(""); const [idNum, setIdNum] = useState("");
   const [chartNum, setChartNum] = useState("");
   const [note, setNote] = useState("");
+  const [dbPicker, setDbPicker] = useState(null); // null | [{chartNum,name,birthday,idNum}]
+
+  // Auto-fill from patientDB
+  const dbSearch = (field, val) => {
+    if (!isAdmin || !patientDB.length || !val.trim()) return;
+    const v = val.trim();
+    let matches = [];
+    if (field === "chartNum") matches = patientDB.filter(p => p.chartNum === String(parseInt(v)||0));
+    else if (field === "name") matches = patientDB.filter(p => p.name.includes(v));
+    else if (field === "bday") matches = patientDB.filter(p => p.birthday === v.replace(/\D/g,"").slice(0,6));
+    else if (field === "idNum") matches = patientDB.filter(p => p.idNum === v.toUpperCase());
+    if (matches.length === 1) applyDBRow(matches[0]);
+    else if (matches.length > 1) setDbPicker(matches);
+  };
+  const applyDBRow = (row) => {
+    setPatient(row.name);
+    setChartNum(row.chartNum);
+    setBday(row.birthday);
+    setIdNum(row.idNum);
+    setDbPicker(null);
+  };
   const [selTreats, setSelTreats] = useState([]);
   const [manualDur, setManualDur] = useState(15);
   const [swDoses, setSwDoses] = useState(1);
@@ -398,12 +419,23 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
 
   return (<div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
     <div style={{ background: "#F5EDDC", borderRadius: 7, padding: "8px 12px", display: "flex", gap: 14, fontSize: 12, color: "#5A4A3A" }}><span>📅 {ds}</span><span>🕐 {time}</span></div>
-    <div><label style={lbl}>患者姓名 *</label><input value={patient} onChange={e => setPatient(e.target.value)} style={inp} placeholder="請輸入全名" /></div>
-    {isAdmin && <div><label style={lbl}>病歷號 *</label><input value={chartNum} onChange={e => setChartNum(e.target.value)} style={inp} placeholder="請輸入病歷號" /></div>}
+    <div><label style={lbl}>患者姓名 *</label><input value={patient} onChange={e => setPatient(e.target.value)} onBlur={e => isAdmin && dbSearch("name", e.target.value)} style={inp} placeholder="請輸入全名" /></div>
+    {isAdmin && <div><label style={lbl}>病歷號 *</label><input value={chartNum} onChange={e => setChartNum(e.target.value)} onBlur={e => dbSearch("chartNum", e.target.value)} style={inp} placeholder="請輸入病歷號" /></div>}
     {!isAdmin && <div><label style={lbl}>生日（民國年月日六碼）*</label><input value={bday} onChange={e => setBday(e.target.value.replace(/\D/g, "").slice(0, 6))} style={inp} placeholder="如 800515" maxLength={6} /></div>}
-    {isAdmin && <div><label style={lbl}>生日（民國年月日六碼，選填）</label><input value={bday} onChange={e => setBday(e.target.value.replace(/\D/g, "").slice(0, 6))} style={inp} placeholder="如 800515" maxLength={6} /></div>}
+    {isAdmin && <div><label style={lbl}>生日（民國年月日六碼，選填）</label><input value={bday} onChange={e => setBday(e.target.value.replace(/\D/g, "").slice(0, 6))} onBlur={e => dbSearch("bday", e.target.value)} style={inp} placeholder="如 800515" maxLength={6} /></div>}
     {!isAdmin && <div><label style={lbl}>身分證字號 或 病歷號（二擇一必填）</label><div style={{ display: "flex", gap: 6 }}><input value={idNum} onChange={e => setIdNum(e.target.value.toUpperCase())} style={{ ...inp, flex: 1 }} placeholder="身分證字號" maxLength={10} /><input value={chartNum} onChange={e => setChartNum(e.target.value)} style={{ ...inp, flex: 1 }} placeholder="病歷號" /></div></div>}
-    {isAdmin && <div><label style={lbl}>身分證字號 {isAdmin ? "" : "*"}</label><input value={idNum} onChange={e => setIdNum(e.target.value.toUpperCase())} style={inp} placeholder={isAdmin ? "（後台選填）" : "請輸入身分證字號"} maxLength={10} /></div>}
+    {isAdmin && <div><label style={lbl}>身分證字號（選填）</label><input value={idNum} onChange={e => setIdNum(e.target.value.toUpperCase())} onBlur={e => dbSearch("idNum", e.target.value)} style={inp} placeholder="（後台選填）" maxLength={10} /></div>}
+    {/* Patient DB picker */}
+    {dbPicker && <div style={{ position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => setDbPicker(null)}>
+      <div style={{ background: "white", borderRadius: 12, padding: 20, maxWidth: 380, width: "100%", fontFamily: "'Noto Sans TC', sans-serif", maxHeight: 400, overflow: "auto" }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontWeight: 700, fontSize: 14, color: "#3D2B1F", marginBottom: 12 }}>找到 {dbPicker.length} 筆符合患者，請選擇：</div>
+        {dbPicker.slice(0, 20).map((row, i) => (<button key={i} onClick={() => applyDBRow(row)} style={{ display: "block", width: "100%", textAlign: "left", padding: "10px 14px", borderRadius: 8, border: "1.5px solid #D4C5A9", background: "#FFFDF5", marginBottom: 6, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif", fontSize: 13 }}>
+          <strong>#{row.chartNum}</strong> {row.name} <span style={{ color: "#8B7355", marginLeft: 8, fontSize: 12 }}>生日 {row.birthday} · {row.idNum}</span>
+        </button>))}
+        {dbPicker.length > 20 && <div style={{ fontSize: 12, color: "#8B7355", marginBottom: 8 }}>僅顯示前 20 筆，請輸入更精確的條件</div>}
+        <button onClick={() => setDbPicker(null)} style={{ marginTop: 4, padding: "8px 0", width: "100%", borderRadius: 8, border: "1.5px solid #D4C5A9", background: "#FFFDF5", color: "#8B7355", cursor: "pointer", fontSize: 13, fontFamily: "'Noto Sans TC', sans-serif" }}>取消</button>
+      </div>
+    </div>}
 
     <div><label style={lbl}>治療項目（可複選）</label>
       <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
@@ -1787,6 +1819,35 @@ export default function App() {
   const [cs, setCs] = useState({});
   const [luSlotCfg, setLuSlotCfg] = useState({});
   const [mainSlotCfg, setMainSlotCfg] = useState({});
+  const [patientDB, setPatientDB] = useState([]); // [{chartNum, name, birthday, idNum}]
+
+  const loadPatientCSV = (file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const text = e.target.result.replace(/^\uFEFF/, ""); // strip BOM
+        const rows = text.split(/\r?\n/).filter(l => l.trim());
+        // Expect header: 病歷號,姓名,生日,身分證
+        const db = rows.slice(1).map(row => {
+          const cols = row.split(",").map(c => c.replace(/^"|"$/g, "").trim());
+          const rawChart = cols[0] || "";
+          const bday7 = (cols[2] || "").replace(/\D/g, "");
+          return {
+            chartNum: String(parseInt(rawChart) || 0), // remove leading zeros
+            name: cols[1] || "",
+            birthday: bday7.length === 7 ? bday7.slice(1) : bday7, // 7→6 digits
+            idNum: (cols[3] || "").toUpperCase(),
+          };
+        }).filter(r => r.chartNum && r.name);
+        setPatientDB(db);
+        setAlertMsg(`✅ 病患資料庫已載入：${db.length} 筆`);
+      } catch (err) {
+        setAlertMsg("❌ CSV 解析失敗：" + err.message);
+      }
+    };
+    reader.readAsText(file, "utf-8");
+  };
 
   // ── Firestore listeners ──
   const [fireErr, setFireErr] = useState("");
@@ -2034,6 +2095,10 @@ export default function App() {
             {[{ k: "schedule", l: "排程表" }, { k: "lu", l: "盧獨立時段" }, { k: "lookup", l: "🔍 查詢" }, { k: "salary", l: "薪資" }, { k: "shifts", l: "班表" }].map(t => (<button key={t.k} onClick={() => setAdminTab(t.k)} style={{ padding: "5px 10px", borderRadius: 5, border: "none", cursor: "pointer", background: adminTab === t.k ? (t.k === "lu" ? LU_COLOR : "#C2563A") : "rgba(255,255,255,0.1)", color: adminTab === t.k ? "white" : "#C4B49A", fontWeight: 600, fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}>{t.l}</button>))}
             <div style={{ width: 1, height: 18, background: "#5A4A3A", margin: "0 4px" }} />
             {canUndo && <button onClick={handleUndo} style={{ padding: "5px 10px", borderRadius: 5, border: "1px solid #C4B49A55", background: "rgba(255,255,255,0.08)", color: "#F0C080", cursor: "pointer", fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif" }} title={`可復原 ${undoStack.length} 步`}>↩ 上一步</button>}
+            <label title={patientDB.length ? `已載入 ${patientDB.length} 筆` : "尚未載入"} style={{ padding: "5px 10px", borderRadius: 5, border: `1px solid ${patientDB.length ? "#6FC" : "#C4B49A55"}`, background: patientDB.length ? "rgba(100,255,150,0.12)" : "rgba(255,255,255,0.06)", color: patientDB.length ? "#6FC" : "#C4B49A", cursor: "pointer", fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif", whiteSpace: "nowrap" }}>
+              📂 {patientDB.length ? "病患庫已上傳" : "載入病患庫"}
+              <input type="file" accept=".csv,.txt" style={{ display: "none" }} onChange={e => { loadPatientCSV(e.target.files[0]); e.target.value = ""; }} />
+            </label>
             <button onClick={() => setPage("front")} style={{ padding: "5px 10px", borderRadius: 5, border: "1px solid #C4B49A55", background: "transparent", color: "#C4B49A", cursor: "pointer", fontSize: 13 }}>返回前台</button>
           </>) : (<>
             {[{ k: "book", l: "📅 預約" }, { k: "lookup", l: "🔍 查詢及取消" }].map(t => (<button key={t.k} onClick={() => setFrontTab(t.k)} style={{ padding: "6px 12px", borderRadius: 5, border: "none", cursor: "pointer", background: frontTab === t.k ? "#C2563A" : "rgba(255,255,255,0.1)", color: frontTab === t.k ? "white" : "#C4B49A", fontWeight: 600, fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}>{t.l}</button>))}
@@ -2098,7 +2163,7 @@ export default function App() {
     </main>
 
     {/* ── MODALS ── */}
-    <Modal open={!!bookingModal} onClose={() => setBookingModal(null)} title={bookingModal?.addExtra ? "外加預約" : "新增預約"}>{bookingModal && <BookingForm date={bookingModal.date} time={bookingModal.time} appts={appts} onBook={handleBook} onClose={() => setBookingModal(null)} isAdmin={isAdmin} cs={cs} mainSlotCfg={mainSlotCfg} addExtra={bookingModal.addExtra} />}</Modal>
+    <Modal open={!!bookingModal} onClose={() => setBookingModal(null)} title={bookingModal?.addExtra ? "外加預約" : "新增預約"}>{bookingModal && <BookingForm date={bookingModal.date} time={bookingModal.time} appts={appts} onBook={handleBook} onClose={() => setBookingModal(null)} isAdmin={isAdmin} cs={cs} mainSlotCfg={mainSlotCfg} addExtra={bookingModal.addExtra} patientDB={patientDB} />}</Modal>
     <Modal open={!!luBookingModal} onClose={() => setLuBookingModal(null)} title="盧獨立時段預約">{luBookingModal && <LuBookingForm date={luBookingModal.date} time={luBookingModal.time} appts={luAppts} onBook={handleLuBook} onClose={() => setLuBookingModal(null)} isAdmin={isAdmin} luSlotCfg={luSlotCfg} />}</Modal>
     <Modal open={!!adminDetailModal} onClose={() => setAdminDetailModal(null)} title="預約管理">{adminDetailModal && <AdminDetail appt={adminDetailModal} appts={appts} onClose={() => setAdminDetailModal(null)} onDelete={handleDelete} onUpdate={handleUpdate} onAlert={setAlertMsg} onCopyDates={handleCopyDates} onStartCopy={a => { setCopyAskModal({ appt: a, isLu: false }); setAdminDetailModal(null); }} onAddExtra={(a) => { setAdminDetailModal(null); setBookingModal({ date: new Date(a.date), time: a.time, addExtra: true }); }} />}</Modal>
     <Modal open={!!luDetailModal} onClose={() => setLuDetailModal(null)} title="盧獨立時段預約管理">{luDetailModal && <LuAdminDetail appt={luDetailModal} appts={luAppts} onClose={() => setLuDetailModal(null)} onDelete={handleLuDelete} onUpdate={handleLuUpdate} onAlert={setAlertMsg} onCopyDates={handleLuCopyDates} onStartCopy={a => { setCopyAskModal({ appt: a, isLu: true }); setLuDetailModal(null); }} />}</Modal>
