@@ -421,9 +421,9 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
     <div style={{ background: "#F5EDDC", borderRadius: 7, padding: "8px 12px", display: "flex", gap: 14, fontSize: 12, color: "#5A4A3A" }}><span>📅 {ds}</span><span>🕐 {time}</span></div>
     <div><label style={lbl}>患者姓名 *</label><input value={patient} onChange={e => setPatient(e.target.value)} onBlur={e => isAdmin && dbSearch("name", e.target.value)} style={inp} placeholder="請輸入全名" /></div>
     {isAdmin && <div><label style={lbl}>病歷號 *</label><input value={chartNum} onChange={e => setChartNum(e.target.value)} onBlur={e => dbSearch("chartNum", e.target.value)} style={inp} placeholder="請輸入病歷號" /></div>}
-    {!isAdmin && <div><label style={lbl}>生日（民國年月日六碼）*</label><input value={bday} onChange={e => setBday(e.target.value.replace(/\D/g, "").slice(0, 6))} style={inp} placeholder="如 800515" maxLength={6} /></div>}
     {isAdmin && <div><label style={lbl}>生日（民國年月日六碼，選填）</label><input value={bday} onChange={e => setBday(e.target.value.replace(/\D/g, "").slice(0, 6))} onBlur={e => dbSearch("bday", e.target.value)} style={inp} placeholder="如 800515" maxLength={6} /></div>}
-    {!isAdmin && <div><label style={lbl}>身分證字號 或 病歷號（二擇一必填）</label><div style={{ display: "flex", gap: 6 }}><input value={idNum} onChange={e => setIdNum(e.target.value.toUpperCase())} style={{ ...inp, flex: 1 }} placeholder="身分證字號" maxLength={10} /><input value={chartNum} onChange={e => setChartNum(e.target.value)} style={{ ...inp, flex: 1 }} placeholder="病歷號" /></div></div>}
+    {!isAdmin && <div><label style={lbl}>生日（民國年月日六碼）*</label><input value={bday} onChange={e => setBday(e.target.value.replace(/\D/g, "").slice(0, 6))} style={inp} placeholder="如 800515" maxLength={6} /></div>}
+    {!isAdmin && <div><label style={lbl}>病歷號（選填）</label><input value={chartNum} onChange={e => setChartNum(e.target.value)} style={inp} placeholder="若有病歷號請填入" /></div>}
     {isAdmin && <div><label style={lbl}>身分證字號（選填）</label><input value={idNum} onChange={e => setIdNum(e.target.value.toUpperCase())} onBlur={e => dbSearch("idNum", e.target.value)} style={inp} placeholder="（後台選填）" maxLength={10} /></div>}
     {/* Patient DB picker */}
     {dbPicker && <div style={{ position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => setDbPicker(null)}>
@@ -508,7 +508,7 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
       <div style={{ background: "white", borderRadius: 14, padding: 32, maxWidth: 340, width: "100%", fontFamily: "'Noto Sans TC', sans-serif", textAlign: "center", boxShadow: "0 16px 48px rgba(0,0,0,0.2)" }}>
         <div style={{ fontSize: 52, marginBottom: 12 }}>✅</div>
         <div style={{ fontSize: 18, fontWeight: 700, color: "#2E7D6F", marginBottom: 10 }}>預約完成！</div>
-        <div style={{ fontSize: 13, color: "#5A4A3A", lineHeight: 1.7, marginBottom: 24 }}>請至「查詢及取消」頁面輸入身分證字號，確認預約是否成功。</div>
+        <div style={{ fontSize: 13, color: "#5A4A3A", lineHeight: 1.7, marginBottom: 24 }}>請至「查詢及取消」頁面輸入病歷號，確認預約是否成功。</div>
         <button onClick={onClose} style={{ width: "100%", padding: "12px 0", borderRadius: 9, border: "none", background: "linear-gradient(135deg, #2E7D6F, #1A5A4A)", color: "white", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>關閉</button>
       </div>
     </div>)}
@@ -553,8 +553,7 @@ function LuBookingForm({ date, time, appts, onBook, onClose, isAdmin, luSlotCfg 
   const submit = () => {
     if (!patient.trim()) { setErr("請輸入患者姓名"); return; }
     if (isAdmin && !chartNum.trim()) { setErr("請輸入病歷號"); return; }
-    if (!isAdmin && (!bday.trim() || bday.length !== 6)) { setErr("請輸入民國年月日六碼"); return; }
-    if (!isAdmin && !idNum.trim() && !chartNum.trim()) { setErr("請輸入身分證字號或病歷號（至少填一項）"); return; }
+    if (!isAdmin && (!bday.trim() || bday.length !== 6)) { setErr("請輸入生日（民國六碼）"); return; }
     if (isAdmin && hasBuf && !occupied) { setConfirmBuf({ patient: patient.trim(), birthday: bday.trim(), idNum: idNum.trim(), chartNum: chartNum.trim(), note: note.trim() }); return; }
     doBook();
   };
@@ -569,7 +568,7 @@ function LuBookingForm({ date, time, appts, onBook, onClose, isAdmin, luSlotCfg 
     {isAdmin
       ? <div><label style={aLbl}>生日（民國年月日六碼，選填）</label><input value={bday} onChange={e => setBday(e.target.value.replace(/\D/g, "").slice(0, 6))} style={aInp} placeholder="如 800515" maxLength={6} /></div>
       : <div><label style={aLbl}>生日（民國年月日六碼）*</label><input value={bday} onChange={e => setBday(e.target.value.replace(/\D/g, "").slice(0, 6))} style={aInp} placeholder="如 800515" maxLength={6} /></div>}
-    {!isAdmin && <div><label style={aLbl}>身分證字號 或 病歷號（二擇一必填）</label><div style={{ display: "flex", gap: 6 }}><input value={idNum} onChange={e => setIdNum(e.target.value.toUpperCase())} style={{ ...aInp, flex: 1 }} placeholder="身分證字號" maxLength={10} /><input value={chartNum} onChange={e => setChartNum(e.target.value)} style={{ ...aInp, flex: 1 }} placeholder="病歷號" /></div></div>}
+    {!isAdmin && <div><label style={aLbl}>病歷號（選填）</label><input value={chartNum} onChange={e => setChartNum(e.target.value)} style={aInp} placeholder="若有病歷號請填入" /></div>}
     {isAdmin && <div><label style={aLbl}>身分證字號 {isAdmin ? "（選填）" : "*"}</label><input value={idNum} onChange={e => setIdNum(e.target.value.toUpperCase())} style={aInp} placeholder={isAdmin ? "（後台選填）" : "請輸入身分證字號"} maxLength={10} /></div>}
     <div><label style={aLbl}>治療時長</label><div style={{ display: "flex", gap: 5 }}>{DURATIONS.map(d => (<button key={d} onClick={() => { setDur(d); setErr(""); }} style={{ flex: 1, padding: "7px 0", borderRadius: 7, cursor: "pointer", fontSize: fs.btn, border: dur === d ? `2px solid ${LU_COLOR}` : "1.5px solid #D4C5A9", background: dur === d ? "#E8F5F0" : "#FFFDF5", color: dur === d ? LU_COLOR : "#5A4A3A", fontWeight: dur === d ? 700 : 500, fontFamily: "'Noto Sans TC', sans-serif" }}>{d} 分</button>))}</div></div>
     {isAdmin && <div><label style={aLbl}>自轉／非自轉</label><div style={{ display: "flex", gap: 5 }}>{[{ v: true, l: "自轉" }, { v: false, l: "非自轉" }].map(o => (<button key={String(o.v)} onClick={() => setSelfRef(o.v)} style={{ flex: 1, padding: "7px 0", borderRadius: 7, cursor: "pointer", fontSize: fs.btn, border: selfRef === o.v ? `2px solid ${LU_COLOR}` : "1.5px solid #D4C5A9", background: selfRef === o.v ? "#E8F5F0" : "#FFFDF5", color: selfRef === o.v ? LU_COLOR : "#5A4A3A", fontWeight: selfRef === o.v ? 700 : 500, fontFamily: "'Noto Sans TC', sans-serif" }}>{o.l}</button>))}</div></div>}
@@ -817,25 +816,29 @@ function LuFrontWeekGrid({ appts, selDate, onCellClick, luSlotCfg }) {
 
 /* ═══════════════════════════════════════════ Front Phone Lookup ═══════════════════════════════════════════ */
 function PhoneLookup({ appts, luAppts, onDelete, onLuDelete }) {
-  const [query, setQuery] = useState("");
-  const [mode, setMode] = useState("id"); // "id" | "chart"
+  const [mode, setMode] = useState("chart"); // "chart" | "namebday"
+  const [chartQuery, setChartQuery] = useState("");
+  const [nameQuery, setNameQuery] = useState("");
+  const [bdayQuery, setBdayQuery] = useState("");
   const [deleteTarget, setDeleteTarget] = useState(null);
-  const q = query.trim();
-  const qUpper = q.toUpperCase();
 
   const results = useMemo(() => {
-    if (q.length < 2) return [];
     const today = fd(new Date());
-    if (mode === "id") {
-      const mainR = appts.filter(a => a.idNum && a.idNum.toUpperCase() === qUpper && a.date >= today).map(a => ({ ...a, sys: "main" }));
-      const luR = luAppts.filter(a => a.idNum && a.idNum.toUpperCase() === qUpper && a.date >= today).map(a => ({ ...a, sys: "lu" }));
-      return [...mainR, ...luR].sort(sortByDateTime);
-    } else {
+    if (mode === "chart") {
+      const q = chartQuery.trim();
+      if (q.length < 1) return [];
       const mainR = appts.filter(a => a.chartNum && a.chartNum.toString() === q && a.date >= today).map(a => ({ ...a, sys: "main" }));
       const luR = luAppts.filter(a => a.chartNum && a.chartNum.toString() === q && a.date >= today).map(a => ({ ...a, sys: "lu" }));
       return [...mainR, ...luR].sort(sortByDateTime);
+    } else {
+      const n = nameQuery.trim();
+      const b = bdayQuery.trim().replace(/\D/g, "").slice(0, 6);
+      if (!n || b.length < 6) return [];
+      const mainR = appts.filter(a => a.patient && a.patient.includes(n) && a.birthday === b && a.date >= today).map(a => ({ ...a, sys: "main" }));
+      const luR = luAppts.filter(a => a.patient && a.patient.includes(n) && a.birthday === b && a.date >= today).map(a => ({ ...a, sys: "lu" }));
+      return [...mainR, ...luR].sort(sortByDateTime);
     }
-  }, [q, qUpper, mode, appts, luAppts]);
+  }, [mode, chartQuery, nameQuery, bdayQuery, appts, luAppts]);
   const handleDelete = () => {
     if (!deleteTarget) return;
     if (deleteTarget.date === fd(new Date())) return; // 今日不可取消
@@ -844,15 +847,19 @@ function PhoneLookup({ appts, luAppts, onDelete, onLuDelete }) {
     setDeleteTarget(null);
   };
   return (<div style={{ maxWidth: 500, margin: "0 auto" }}>
-    <div style={{ textAlign: "center", marginBottom: 20 }}><div style={{ fontSize: 42, marginBottom: 8 }}>🔍</div><h2 style={{ margin: 0, fontFamily: "'Noto Serif TC', serif", color: "#3D2B1F", fontSize: 21 }}>預約查詢及取消</h2><p style={{ color: "#8B7355", fontSize: 15, margin: "6px 0 0 0" }}>輸入身分證字號或病歷號查詢今日起的預約</p></div>
+    <div style={{ textAlign: "center", marginBottom: 20 }}><div style={{ fontSize: 42, marginBottom: 8 }}>🔍</div><h2 style={{ margin: 0, fontFamily: "'Noto Serif TC', serif", color: "#3D2B1F", fontSize: 21 }}>預約查詢及取消</h2><p style={{ color: "#8B7355", fontSize: 15, margin: "6px 0 0 0" }}>輸入病歷號，或姓名＋生日查詢今日起的預約</p></div>
     <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
-      {[{ k: "id", l: "🪪 身分證字號" }, { k: "chart", l: "📋 病歷號" }].map(m => (
-        <button key={m.k} onClick={() => { setMode(m.k); setQuery(""); }} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: mode === m.k ? "2px solid #C2563A" : "1.5px solid #D4C5A9", background: mode === m.k ? "#FFF0EB" : "#FFFDF5", color: mode === m.k ? "#C2563A" : "#5A4A3A", fontWeight: mode === m.k ? 700 : 500, fontSize: 14, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>{m.l}</button>
+      {[{ k: "chart", l: "📋 病歷號" }, { k: "namebday", l: "👤 姓名＋生日" }].map(m => (
+        <button key={m.k} onClick={() => { setMode(m.k); setChartQuery(""); setNameQuery(""); setBdayQuery(""); }} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: mode === m.k ? "2px solid #C2563A" : "1.5px solid #D4C5A9", background: mode === m.k ? "#FFF0EB" : "#FFFDF5", color: mode === m.k ? "#C2563A" : "#5A4A3A", fontWeight: mode === m.k ? 700 : 500, fontSize: 14, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>{m.l}</button>
       ))}
     </div>
-    <input value={query} onChange={e => setQuery(mode === "id" ? e.target.value.toUpperCase() : e.target.value)} placeholder={mode === "id" ? "輸入身分證字號" : "輸入病歷號"} style={{ width: "100%", padding: "14px 18px", borderRadius: 10, border: "1.5px solid #D4C5A9", fontSize: 19, background: "#FFFDF5", fontFamily: "'Noto Sans TC', sans-serif", boxSizing: "border-box", outline: "none", textAlign: "center", letterSpacing: mode === "id" ? 2 : 0 }} maxLength={mode === "id" ? 10 : 20} />
-    {q.length > 0 && q.length < 2 && <p style={{ textAlign: "center", fontSize: 14, color: "#B5A898", margin: "8px 0 0 0" }}>請輸入更多字元</p>}
-    {q.length >= 2 && results.length === 0 && <div style={{ textAlign: "center", padding: "30px 0", color: "#8B7355" }}><div style={{ fontSize: 38, marginBottom: 8 }}>📭</div><p style={{ margin: 0, fontSize: 16 }}>查無今日以後的預約紀錄</p></div>}
+    {mode === "chart" && <input value={chartQuery} onChange={e => setChartQuery(e.target.value)} placeholder="輸入病歷號" style={{ width: "100%", padding: "14px 18px", borderRadius: 10, border: "1.5px solid #D4C5A9", fontSize: 19, background: "#FFFDF5", fontFamily: "'Noto Sans TC', sans-serif", boxSizing: "border-box", outline: "none", textAlign: "center" }} />}
+    {mode === "namebday" && <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <input value={nameQuery} onChange={e => setNameQuery(e.target.value)} placeholder="輸入姓名" style={{ width: "100%", padding: "12px 18px", borderRadius: 10, border: "1.5px solid #D4C5A9", fontSize: 17, background: "#FFFDF5", fontFamily: "'Noto Sans TC', sans-serif", boxSizing: "border-box", outline: "none", textAlign: "center" }} />
+      <input value={bdayQuery} onChange={e => setBdayQuery(e.target.value.replace(/\D/g,"").slice(0,6))} placeholder="生日（民國六碼，如 800515）" style={{ width: "100%", padding: "12px 18px", borderRadius: 10, border: "1.5px solid #D4C5A9", fontSize: 17, background: "#FFFDF5", fontFamily: "'Noto Sans TC', sans-serif", boxSizing: "border-box", outline: "none", textAlign: "center", letterSpacing: 3 }} maxLength={6} />
+    </div>}
+    {mode === "namebday" && (!nameQuery.trim() || bdayQuery.length < 6) && (nameQuery || bdayQuery) && <p style={{ textAlign: "center", fontSize: 14, color: "#B5A898", margin: "8px 0 0 0" }}>請同時輸入姓名和生日（六碼）</p>}
+    {results.length === 0 && ((mode === "chart" && chartQuery.trim()) || (mode === "namebday" && nameQuery.trim() && bdayQuery.length >= 6)) && <div style={{ textAlign: "center", padding: "30px 0", color: "#8B7355" }}><div style={{ fontSize: 38, marginBottom: 8 }}>📭</div><p style={{ margin: 0, fontSize: 16 }}>查無今日以後的預約紀錄</p></div>}
     {results.length > 0 && <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}><p style={{ fontSize: 15, color: "#8B7355", margin: 0 }}>找到 {results.length} 筆</p>
       {results.map(a => { const isLu = a.sys === "lu"; const thObj = isLu ? null : (TH_MAP[a.therapist] || TH_MAP["X"]); const color = isLu ? LU_COLOR : thObj.color; const isToday = a.date === fd(new Date()); return (<div key={a.id} style={{ background: "#FFFDF5", border: `1.5px solid ${color}40`, borderRadius: 10, padding: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}><div style={{ width: 28, height: 28, borderRadius: "50%", background: color, color: "white", fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" }}>{isLu ? "盧" : thLabel(TH_MAP[a.therapist] || TH_MAP["X"])}</div><span style={{ fontWeight: 700, color: "#3D2B1F", fontSize: 17 }}>{isLu ? "盧獨立時段" : thObj.name}</span>{isToday && <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, color: "#2E7D6F", background: "#E6F5EE", padding: "2px 8px", borderRadius: 4 }}>今日</span>}</div>
@@ -1135,145 +1142,116 @@ function AdminDayView({ appts, luAppts, selDate, onApptClick, onCellClick, mainS
 /* ═══════════════════════════════════════════ Admin Lookup ═══════════════════════════════════════════ */
 function AdminLookup({ appts, luAppts, onApptClick, onLuApptClick }) {
   const [query, setQuery] = useState("");
-  const [mode, setMode] = useState("chart"); // "id" | "bday" | "chart"
-  const q = query.trim().toUpperCase();
-  const qRaw = query.trim();
+  const [mode, setMode] = useState("chart"); // "chart" | "bday" | "name"
+  const [pickerList, setPickerList] = useState(null); // null | [{patient, chartNum, birthday, idNum}] distinct patients
+  const q = query.trim();
 
   const results = useMemo(() => {
-    if (qRaw.length < 1) return [];
-    if (mode === "id") {
-      const mainR = appts.filter(a => a.idNum && a.idNum.toUpperCase() === q).map(a => ({ ...a, sys: "main" }));
-      const luR = luAppts.filter(a => a.idNum && a.idNum.toUpperCase() === q).map(a => ({ ...a, sys: "lu" }));
-      return [...mainR, ...luR].sort(sortByDateTime);
-    } else if (mode === "chart") {
-      const mainR = appts.filter(a => a.chartNum && a.chartNum.toString() === qRaw).map(a => ({ ...a, sys: "main" }));
-      const luR = luAppts.filter(a => a.chartNum && a.chartNum.toString() === qRaw).map(a => ({ ...a, sys: "lu" }));
-      return [...mainR, ...luR].sort(sortByDateTime);
-    } else {
-      if (qRaw.length < 2) return [];
-      const mainR = appts.filter(a => a.birthday && a.birthday === qRaw).map(a => ({ ...a, sys: "main" }));
-      const luR = luAppts.filter(a => a.birthday && a.birthday === qRaw).map(a => ({ ...a, sys: "lu" }));
-      return [...mainR, ...luR].sort(sortByDateTime);
-    }
-  }, [q, qRaw, mode, appts, luAppts]);
+    if (q.length < 1) return [];
+    const all = [
+      ...appts.map(a => ({ ...a, sys: "main" })),
+      ...luAppts.map(a => ({ ...a, sys: "lu" }))
+    ];
+    if (mode === "chart") return all.filter(a => a.chartNum && a.chartNum.toString().includes(q)).sort(sortByDateTime);
+    if (mode === "bday") return all.filter(a => a.birthday && a.birthday.includes(q.replace(/\D/g,""))).sort(sortByDateTime);
+    if (mode === "name") return all.filter(a => a.patient && a.patient.includes(q)).sort(sortByDateTime);
+    return [];
+  }, [q, mode, appts, luAppts]);
 
-  const today = fd(new Date());
-  const future = results.filter(a => a.date >= today);
-  const past = results.filter(a => a.date < today);
+  // Distinct patients from results (for picker when multiple patients)
+  const distinctPatients = useMemo(() => {
+    const seen = new Set();
+    return results.filter(a => {
+      const key = a.chartNum || a.patient;
+      if (seen.has(key)) return false;
+      seen.add(key); return true;
+    });
+  }, [results]);
 
-  const rowStyle = { display: "grid", gridTemplateColumns: "auto 1fr auto auto auto auto", gap: "4px 10px", alignItems: "center", padding: "8px 12px", borderBottom: "1px solid #EDE5D5", cursor: "pointer", fontSize: 13 };
+  // Filtered results for selected patient
+  const [selPatient, setSelPatient] = useState(null); // chartNum key
+  const displayResults = useMemo(() => {
+    if (!selPatient) return results;
+    return results.filter(a => (a.chartNum || a.patient) === selPatient);
+  }, [results, selPatient]);
+
+  // Auto-show picker when multiple distinct patients found
+  useEffect(() => {
+    setSelPatient(null);
+    setPickerList(null);
+  }, [query, mode]);
+
+  const handlePrint = () => { /* same as before */
+    const rows = displayResults;
+    const future = rows.filter(a => a.date >= fd(new Date()));
+    if (!future.length) return;
+    const name = rows[0]?.patient || "查詢結果";
+    const printHtml = `<html><head><meta charset="utf-8"><title>查詢結果</title>
+      <style>body{font-family:'Noto Sans TC',sans-serif;font-size:12px;padding:16px}h2{font-size:16px;margin-bottom:8px}table{width:100%;border-collapse:collapse}th{background:#F5F0E5;padding:5px 8px;text-align:left;border-bottom:2px solid #C4A882;font-size:11px}td{padding:5px 8px;border-bottom:1px solid #EDE5D5;font-size:12px}.section{font-size:11px;font-weight:700;padding:4px 8px;background:#E8F5F0;margin-top:10px}</style></head>
+      <body><h2>查詢結果：${name}</h2>
+      <div class="section">今日起的預約（${future.length} 筆）</div>
+      <table><thead><tr><th>日期</th><th>時間</th><th>患者</th><th>病歷號</th><th>治療師</th><th>時長</th><th>項目</th><th>班別</th><th>轉介</th><th>狀態</th></tr></thead><tbody>
+      ${future.map(a => { const isLu = a.sys==="lu"; const th2 = isLu ? null : (TH_MAP[a.therapist]||TH_MAP["X"]); const thName = isLu ? "盧獨立" : (th2?.name||""); const badges = [a.checkedIn?'✓到':'', a.reconfirm?'再確認':''].filter(Boolean).join(' '); return `<tr><td>${a.date}</td><td>${a.time}</td><td><b>${a.patient}</b></td><td>${a.chartNum?'#'+a.chartNum:''}</td><td>${thName}</td><td>${a.duration}分</td><td>${getApptTreatLabel(a)}</td><td>${isLu?"班外":(a.onDuty?"班內":"班外")}</td><td>${a.selfRef?"自轉":"非自轉"}</td><td>${badges}</td></tr>`; }).join('')}
+      </tbody></table></body></html>`;
+    const win = window.open("","_blank"); win.document.write(printHtml); win.document.close(); win.print();
+  };
+
+  const inp = { width: "100%", padding: "10px 14px", borderRadius: 8, border: "1.5px solid #D4C5A9", fontSize: 15, background: "#FFFDF5", fontFamily: "'Noto Sans TC', sans-serif", outline: "none", boxSizing: "border-box" };
 
   const renderRows = (list, isPast) => list.map(a => {
     const isLu = a.sys === "lu";
-    const thObj = isLu ? null : (TH_MAP[a.therapist] || TH_MAP["X"]);
-    const color = isLu ? LU_COLOR : thObj.color;
-    return (
-      <div key={a.id} onClick={() => isLu ? onLuApptClick(a) : onApptClick(a)}
-        style={{ ...rowStyle, background: isPast ? "#F8F4EE" : "#FFFDF5", opacity: isPast ? 0.75 : 1 }}
-        onMouseEnter={e => e.currentTarget.style.background = isPast ? "#F0E8DC" : "#FFF0EB"}
-        onMouseLeave={e => e.currentTarget.style.background = isPast ? "#F8F4EE" : "#FFFDF5"}>
-        <div style={{ width: 24, height: 24, borderRadius: "50%", background: color, color: "white", fontWeight: 700, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{isLu ? "盧" : thLabel(thObj)}</div>
-        <div>
-          <div style={{ fontWeight: 700, color: "#3D2B1F" }}>{a.patient} <span style={{ fontWeight: 400, fontSize: 11, color: "#8B7355" }}>{a.chartNum ? `#${a.chartNum}` : `生日：${a.birthday}`}</span></div>
-          <div style={{ fontSize: 11, color: "#8B7355" }}>{isLu ? "盧獨立時段" : thObj.name} · {isLu ? "班外" : (a.onDuty ? "班內" : "班外")} · {a.selfRef ? "自轉" : "非自轉"}</div>
-        </div>
-        <span style={{ fontSize: 12, color: "#3D2B1F", whiteSpace: "nowrap" }}>{a.date}</span>
-        <span style={{ fontSize: 12, color: "#3D2B1F" }}>{a.time}</span>
-        <span style={{ fontSize: 12, color: "#8B7355" }}>{a.duration}分</span>
-        <div style={{ display: "flex", gap: 4 }}>
-          {a.checkedIn && <span style={{ fontSize: 10, fontWeight: 700, color: "#2E7D6F", background: "#E6F5EE", padding: "1px 5px", borderRadius: 3 }}>✓到</span>}
-          {a.reconfirm && <span style={{ fontSize: 10, fontWeight: 700, color: "#5B6ABF", background: "#EEEEFF", padding: "1px 5px", borderRadius: 3 }}>再確認</span>}
-          <span style={{ fontSize: 10, color: "#8B7355" }}>{getApptTreatLabel(a)}</span>
-        </div>
+    const th = isLu ? null : (TH_MAP[a.therapist] || TH_MAP["X"]);
+    return (<div key={a.id} onClick={() => isLu ? onLuApptClick(a) : onApptClick(a)} style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 12px", borderBottom: "1px solid #F0EBE0", cursor: "pointer", background: "white", opacity: isPast ? 0.6 : 1 }} onMouseEnter={e => e.currentTarget.style.background = "#FFFDF5"} onMouseLeave={e => e.currentTarget.style.background = "white"}>
+      {isLu ? <div style={{ width: 26, height: 26, borderRadius: "50%", background: LU_COLOR, color: "white", fontWeight: 700, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>盧</div>
+        : <div style={{ width: 26, height: 26, borderRadius: "50%", background: th.color, color: "white", fontWeight: 700, fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{thLabel(th)}</div>}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: 14 }}>{a.patient} <span style={{ fontWeight: 400, color: "#8B7355", fontSize: 12 }}>#{a.chartNum}</span>{a.reconfirm && <span style={{ marginLeft: 5, fontSize: 10, background: "#EEEEFF", color: "#5B6ABF", padding: "1px 5px", borderRadius: 3, fontWeight: 600 }}>再確認</span>}</div>
+        <div style={{ fontSize: 12, color: "#8B7355" }}>{a.date} {a.time} · {a.duration}分 · {getApptTreatLabel(a)} · {isLu ? "盧獨立" : (a.onDuty ? "班內" : "班外")}</div>
       </div>
-    );
+      {a.checkedIn && <span style={{ fontSize: 11, fontWeight: 700, color: "#2E7D6F", background: "#E8F5F0", padding: "2px 8px", borderRadius: 4 }}>✓到</span>}
+    </div>);
   });
 
-  const handlePrint = () => {
-    const name = results[0]?.patient || "查詢結果";
-    const chartNum = results[0]?.chartNum ? `#${results[0].chartNum}` : (results[0]?.birthday ? `生日 ${results[0].birthday}` : "");
-    const printHtml = `
-      <html><head><meta charset="utf-8"><title>查詢結果</title>
-      <style>
-        body { font-family: 'Noto Sans TC', sans-serif; font-size: 12px; color: #222; padding: 16px; }
-        h2 { font-size: 16px; margin: 0 0 4px; }
-        .sub { font-size: 11px; color: #666; margin-bottom: 12px; }
-        table { width: 100%; border-collapse: collapse; }
-        th { background: #F5F0E5; padding: 5px 8px; text-align: left; font-size: 11px; border-bottom: 2px solid #C4A882; }
-        td { padding: 5px 8px; border-bottom: 1px solid #EDE5D5; font-size: 12px; }
-        .past td { color: #999; }
-        .section { font-size: 11px; font-weight: 700; padding: 4px 8px; background: #E8F5F0; margin-top: 10px; }
-        .section-past { background: #F8F4EE; color: #8B7355; }
-        .badge { display: inline-block; padding: 1px 5px; border-radius: 3px; font-size: 10px; margin-right: 3px; }
-        .badge-green { background: #E6F5EE; color: #2E7D6F; font-weight: 700; }
-        .badge-blue { background: #EEEEFF; color: #5B6ABF; font-weight: 700; }
-      </style></head>
-      <body>
-        <h2>查詢結果：${name} ${chartNum}</h2>
-        <div class="sub">共 ${results.length} 筆｜列印時間：${new Date().toLocaleString("zh-TW")}</div>
-        ${future.length > 0 ? `
-          <div class="section">📅 今日起的預約（${future.length} 筆）</div>
-          <table><thead><tr><th>日期</th><th>時間</th><th>患者</th><th>病歷號</th><th>治療師</th><th>時長</th><th>項目</th><th>班別</th><th>轉介</th><th>狀態</th></tr></thead><tbody>
-          ${future.map(a => {
-            const isLu = a.sys === "lu";
-            const thObj = isLu ? null : (TH_MAP[a.therapist] || TH_MAP["X"]);
-            const thName = isLu ? "盧獨立" : (thObj?.name || "");
-            const badges = [a.checkedIn ? '<span class="badge badge-green">✓到</span>' : '', a.reconfirm ? '<span class="badge badge-blue">再確認</span>' : ''].join('');
-            return `<tr><td>${a.date}</td><td>${a.time}</td><td><b>${a.patient}</b></td><td>${a.chartNum ? '#'+a.chartNum : ''}</td><td>${thName}</td><td>${a.duration}分</td><td>${getApptTreatLabel(a)}</td><td>${isLu ? "班外" : (a.onDuty ? "班內" : "班外")}</td><td>${a.selfRef ? "自轉" : "非自轉"}</td><td>${badges}</td></tr>`;
-          }).join('')}
-          </tbody></table>` : '<p style="color:#888">今日起無預約紀錄</p>'}
-      </body></html>`;
-    const win = window.open("", "_blank");
-    win.document.write(printHtml);
-    win.document.close();
-    win.print();
-  };
+  const today = fd(new Date());
+  const future = displayResults.filter(a => a.date >= today);
+  const past = displayResults.filter(a => a.date < today);
 
-  return (
-    <div>
-      <div style={{ display: "flex", gap: 6, marginBottom: 12, alignItems: "center", flexWrap: "wrap" }}>
-        {[{ k: "bday", l: "🎂 生日" }, { k: "chart", l: "📋 病歷號" }, { k: "id", l: "🪪 身分證" }].map(m => (
-          <button key={m.k} onClick={() => { setMode(m.k); setQuery(""); }}
-            style={{ padding: "7px 14px", borderRadius: 7, border: mode === m.k ? "2px solid #C2563A" : "1.5px solid #D4C5A9", background: mode === m.k ? "#FFF0EB" : "#FFFDF5", color: mode === m.k ? "#C2563A" : "#5A4A3A", fontWeight: mode === m.k ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>{m.l}</button>
-        ))}
-      </div>
-      <input value={query}
-        onChange={e => setQuery(mode === "id" ? e.target.value.toUpperCase() : mode === "bday" ? e.target.value.replace(/\D/g, "").slice(0, 6) : e.target.value)}
-        placeholder={mode === "id" ? "輸入身分證字號（完整）" : mode === "chart" ? "輸入病歷號" : "輸入民國年月日，如 800515"}
-        maxLength={mode === "id" ? 10 : mode === "bday" ? 6 : 20}
-        style={{ width: "100%", padding: "11px 16px", borderRadius: 9, border: "1.5px solid #D4C5A9", fontSize: 16, background: "#FFFDF5", fontFamily: "'Noto Sans TC', sans-serif", boxSizing: "border-box", outline: "none", letterSpacing: mode === "id" ? 2 : 0, marginBottom: 12 }} />
-
-      {qRaw.length >= 2 && results.length === 0 && (
-        <div style={{ textAlign: "center", padding: "30px 0", color: "#8B7355" }}>
-          <div style={{ fontSize: 36, marginBottom: 8 }}>📭</div>
-          <p style={{ margin: 0, fontSize: 15 }}>查無符合的預約紀錄</p>
-        </div>
-      )}
-
-      {results.length > 0 && (
-        <div style={{ borderRadius: 9, border: "1px solid #E0D5C1", overflow: "hidden" }}>
-          <div style={{ display: "flex", justifyContent: "flex-end", padding: "6px 10px", background: "#F8F4EE", borderBottom: "1px solid #E0D5C1" }}>
-            <button onClick={handlePrint} style={{ padding: "5px 14px", borderRadius: 6, border: "1.5px solid #3D2B1F", background: "#FFFDF5", color: "#3D2B1F", cursor: "pointer", fontWeight: 600, fontSize: 13, fontFamily: "'Noto Sans TC', sans-serif" }}>🖨️ 列印</button>
-          </div>
-          {/* 今日以後 */}
-          {future.length > 0 && (
-            <div>
-              <div style={{ padding: "6px 12px", background: "#F0F8F0", borderBottom: "1px solid #E0D5C1", fontSize: 12, fontWeight: 700, color: "#2E7D6F" }}>📅 今日起的預約（{future.length} 筆）— 點擊可管理</div>
-              {renderRows(future, false)}
-            </div>
-          )}
-          {/* 過去 */}
-          {past.length > 0 && (
-            <div>
-              <div style={{ padding: "6px 12px", background: "#F8F4EE", borderBottom: "1px solid #E0D5C1", fontSize: 12, fontWeight: 700, color: "#8B7355" }}>🗂 歷史紀錄（{past.length} 筆）— 點擊可管理</div>
-              {renderRows(past, true)}
-            </div>
-          )}
-        </div>
-      )}
+  return (<div>
+    {/* Mode tabs */}
+    <div style={{ display: "flex", gap: 5, marginBottom: 10 }}>
+      {[{ k: "chart", l: "📋 病歷號" }, { k: "name", l: "👤 姓名" }, { k: "bday", l: "🎂 生日" }].map(m => (
+        <button key={m.k} onClick={() => { setMode(m.k); setQuery(""); }} style={{ flex: 1, padding: "7px 0", borderRadius: 7, border: mode === m.k ? "2px solid #C2563A" : "1.5px solid #D4C5A9", background: mode === m.k ? "#FFF0EB" : "#FFFDF5", color: mode === m.k ? "#C2563A" : "#5A4A3A", fontWeight: mode === m.k ? 700 : 500, fontSize: 13, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>{m.l}</button>
+      ))}
     </div>
-  );
+    <input value={query} onChange={e => setQuery(mode === "bday" ? e.target.value.replace(/\D/g,"").slice(0,6) : e.target.value)} placeholder={mode === "chart" ? "輸入病歷號（支援模糊搜尋）" : mode === "name" ? "輸入姓名（支援模糊搜尋）" : "輸入生日六碼（如 800515）"} style={inp} maxLength={mode === "bday" ? 6 : 50} />
+    {/* Multi-patient picker */}
+    {q.length >= 1 && distinctPatients.length > 1 && !selPatient && (
+      <div style={{ marginTop: 10, borderRadius: 8, border: "1px solid #E0D5C1", overflow: "hidden" }}>
+        <div style={{ padding: "6px 12px", background: "#FFF8E6", borderBottom: "1px solid #E0D5C1", fontSize: 12, color: "#B8860B", fontWeight: 600 }}>找到 {distinctPatients.length} 位患者，請選擇：</div>
+        {distinctPatients.map((a, i) => (<button key={i} onClick={() => setSelPatient(a.chartNum || a.patient)} style={{ display: "block", width: "100%", textAlign: "left", padding: "9px 14px", borderBottom: "1px solid #F0EBE0", background: "white", cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif", fontSize: 13, border: "none" }} onMouseEnter={e => e.currentTarget.style.background="#FFFDF5"} onMouseLeave={e => e.currentTarget.style.background="white"}>
+          <strong>{a.patient}</strong> {a.chartNum && <span style={{ color: "#8B7355" }}>#{a.chartNum}</span>} <span style={{ color: "#B5A898", fontSize: 11 }}>生日 {a.birthday}</span>
+        </button>))}
+      </div>
+    )}
+    {/* Results */}
+    {(displayResults.length > 0 && (distinctPatients.length === 1 || selPatient)) && (
+      <div style={{ borderRadius: 9, border: "1px solid #E0D5C1", overflow: "hidden", marginTop: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 12px", background: "#F8F4EE", borderBottom: "1px solid #E0D5C1" }}>
+          <span style={{ fontSize: 12, color: "#5A4A3A", fontWeight: 600 }}>{displayResults[0]?.patient} — 共 {displayResults.length} 筆</span>
+          <div style={{ display: "flex", gap: 6 }}>
+            {selPatient && <button onClick={() => setSelPatient(null)} style={{ padding: "4px 10px", borderRadius: 5, border: "1.5px solid #D4C5A9", background: "#FFFDF5", color: "#5A4A3A", cursor: "pointer", fontSize: 12 }}>← 返回</button>}
+            <button onClick={handlePrint} style={{ padding: "4px 10px", borderRadius: 5, border: "1.5px solid #3D2B1F", background: "#FFFDF5", color: "#3D2B1F", cursor: "pointer", fontWeight: 600, fontSize: 12 }}>🖨️ 列印</button>
+          </div>
+        </div>
+        {future.length > 0 && (<><div style={{ padding: "5px 12px", background: "#F0F8F0", borderBottom: "1px solid #E0D5C1", fontSize: 12, fontWeight: 700, color: "#2E7D6F" }}>📅 今日起的預約（{future.length} 筆）— 點擊可管理</div>{renderRows(future, false)}</>)}
+        {past.length > 0 && (<><div style={{ padding: "5px 12px", background: "#F8F4EE", borderBottom: "1px solid #E0D5C1", fontSize: 12, fontWeight: 700, color: "#8B7355" }}>🗂 歷史紀錄（{past.length} 筆）— 點擊可管理</div>{renderRows(past, true)}</>)}
+      </div>
+    )}
+    {q.length >= 1 && results.length === 0 && <div style={{ textAlign: "center", padding: "24px 0", color: "#8B7355" }}><div style={{ fontSize: 32 }}>📭</div><p style={{ fontSize: 14, margin: "6px 0 0" }}>查無資料</p></div>}
+  </div>);
 }
+
+
 function LuAdminDayView({ appts, selDate, onCellClick, onApptClick, luSlotCfg, setLuSlotCfg }) {
   const ds = fd(selDate); const dayA = useMemo(() => appts.filter(a => a.date === ds), [appts, ds]);
   const getStart = useCallback(time => dayA.find(a => a.time === time), [dayA]);
