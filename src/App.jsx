@@ -487,7 +487,7 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
     </div>
 
     {isAdmin && <div><label style={lbl}>自轉／非自轉</label><div style={{ display: "flex", gap: 5 }}>{[{ v: true, l: "自轉" }, { v: false, l: "非自轉" }].map(o => (<button key={String(o.v)} onClick={() => setSelfRef(o.v)} style={{ flex: 1, padding: "7px 0", borderRadius: 7, cursor: "pointer", fontSize: 12, border: selfRef === o.v ? "2px solid #5B6ABF" : "1.5px solid #D4C5A9", background: selfRef === o.v ? "#EEEEFF" : "#FFFDF5", color: selfRef === o.v ? "#5B6ABF" : "#5A4A3A", fontWeight: selfRef === o.v ? 700 : 500, fontFamily: "'Noto Sans TC', sans-serif" }}>{o.l}</button>))}</div></div>}
-    {isAdmin && <div><label style={lbl}>附註（選填）</label><input value={note} onChange={e => setNote(e.target.value)} style={inp} placeholder="可填寫特殊需求或備忘" /></div>}
+    <div><label style={lbl}>附註（選填）</label><input value={note} onChange={e => setNote(e.target.value)} style={inp} placeholder="可填寫特殊需求或備忘" /></div>
     {err && <div style={{ color: "#C2563A", fontSize: 11, background: "#FFF0EB", padding: "5px 9px", borderRadius: 5 }}>{err}</div>}
     <button onClick={submit} disabled={!anyAvail && !isAdmin} style={{ padding: 11, borderRadius: 9, border: "none", cursor: (anyAvail || isAdmin) ? "pointer" : "not-allowed", background: (anyAvail || isAdmin) ? "linear-gradient(135deg, #C2563A, #A8432B)" : "#CCBFB0", color: "white", fontSize: 14, fontWeight: 700, fontFamily: "'Noto Sans TC', sans-serif" }}>確認預約</button>
     <ConfirmModal open={!!confirmData} message={confirmData?.message || ""} onOk={() => { doBook(confirmData.apptData); setConfirmData(null); }} onCancel={() => setConfirmData(null)} />
