@@ -298,10 +298,15 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
     if (isAdmin || totalDur === 0) return false;
     for (let i = 0; i < totalDur / 15; i++) {
       const t = fM(toM(time) + i * 15);
+      // Manually closed by admin
       if (mainSlotCfg[`${ds}-${t}`] === false) return true;
+      // System default closed (FIXED_CLOSED_TIMES) — only if not overridden open
+      if (mainSlotCfg[`${ds}-${t}`] !== true) {
+        if (isSatAft(date, t) || (FIXED_CLOSED_TIMES[date.getDay()]?.has(t))) return true;
+      }
     }
     return false;
-  }, [ds, time, totalDur, mainSlotCfg, isAdmin]);
+  }, [ds, time, totalDur, mainSlotCfg, isAdmin, date]);
 
   const onDutyOccupied = useMemo(() => totalDur > 0 ? onDutySlotConflict(appts, ds, time, totalDur, null) : false, [appts, ds, time, totalDur]);
 
