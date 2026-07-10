@@ -121,7 +121,31 @@ function bufferConflictGeneric(appts, ds, time, dur, exId, filterFn) {
   });
 }
 function bufferConflict(appts, ds, time, dur, tid, exId) { return bufferConflictGeneric(appts, ds, time, dur, exId, a => a.therapist === tid); }
-function luBufferConflict(appts, ds, time, dur, exId) { return bufferConflictGeneric(appts, ds, time, dur, exId, () => true); }
+function luBufferConflict(appts, ds, time, dur, exId) {
+  // 盧獨立時段：只有緊鄰的連續區塊達到 45 分鐘以上才需緩衝
+  const ns = toM(time), ne = ns + dur;
+  const dayA = appts.filter(a => a.id !== exId && a.date === ds);
+
+  // 計算緊鄰在「前方」的連續佔用總時長
+  let blockBefore = 0, cursor = ns;
+  while (true) {
+    const prev = dayA.find(a => toM(a.time) + a.duration === cursor);
+    if (!prev) break;
+    blockBefore += prev.duration;
+    cursor = toM(prev.time);
+  }
+
+  // 計算緊鄰在「後方」的連續佔用總時長
+  let blockAfter = 0; cursor = ne;
+  while (true) {
+    const next = dayA.find(a => toM(a.time) === cursor);
+    if (!next) break;
+    blockAfter += next.duration;
+    cursor = toM(next.time) + next.duration;
+  }
+
+  return blockBefore >= 45 || blockAfter >= 45;
+}
 
 /* ═══════════════════════════════════════════ Demo data removed — using Firestore ═══════════════════════════════════════════ */
 
@@ -521,13 +545,29 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
 }
 
 /* ═══════════════════════════════════════════ 盧老師 Booking Form ═══════════════════════════════════════════ */
-function LuBookingForm({ date, time, appts, onBook, onClose, isAdmin, luSlotCfg }) {
+function LuBookingForm({ date, time, appts, onBook, onClose, isAdmin, luSlotCfg, patientDB = [] }) {
   const [patient, setPatient] = useState(""); const [bday, setBday] = useState(""); const [idNum, setIdNum] = useState("");
   const [chartNum, setChartNum] = useState("");
   const [note, setNote] = useState("");
   const [dur, setDur] = useState(15);
   const [selfRef, setSelfRef] = useState(false);
   const [err, setErr] = useState(""); const [confirmBuf, setConfirmBuf] = useState(null);
+  const [dbPicker, setDbPicker] = useState(null);
+
+  const dbSearch = (field, val) => {
+    if (!isAdmin || !patientDB.length || !val.trim()) return;
+    const v = val.trim();
+    let matches = [];
+    if (field === "chartNum") matches = patientDB.filter(p => p.chartNum === String(parseInt(v)||0));
+    else if (field === "name") matches = patientDB.filter(p => p.name.includes(v));
+    else if (field === "bday") matches = patientDB.filter(p => p.birthday === v.replace(/\D/g,"").slice(0,6));
+    if (matches.length === 1) applyDBRow(matches[0]);
+    else if (matches.length > 1) setDbPicker(matches);
+  };
+  const applyDBRow = (row) => {
+    setPatient(row.name); setChartNum(row.chartNum);
+    setBday(row.birthday); setIdNum(row.idNum); setDbPicker(null);
+  };
   const ds = fd(date);
   const occupied = useMemo(() => luSlotOccupied(appts, ds, time, dur, null), [appts, ds, time, dur]);
   const allOpen = useMemo(() => {
@@ -558,6 +598,7 @@ function LuBookingForm({ date, time, appts, onBook, onClose, isAdmin, luSlotCfg 
     if (!patient.trim()) { setErr("請輸入患者姓名"); return; }
     if (isAdmin && !chartNum.trim()) { setErr("請輸入病歷號"); return; }
     if (!isAdmin && (!bday.trim() || bday.length !== 6)) { setErr("請輸入生日（民國六碼）"); return; }
+    if (!isAdmin && hasBuf) { setErr("此時段緊鄰連續治療，需留緩衝時間，無法預約"); return; }
     if (isAdmin && hasBuf && !occupied) { setConfirmBuf({ patient: patient.trim(), birthday: bday.trim(), idNum: idNum.trim(), chartNum: chartNum.trim(), note: note.trim() }); return; }
     doBook();
   };
@@ -567,12 +608,21 @@ function LuBookingForm({ date, time, appts, onBook, onClose, isAdmin, luSlotCfg 
       <span style={{ fontWeight: 700, color: "#B8860B" }}>📌 注意：</span>此表單僅限預約徒手。若須預約震波請回到大預約表，並選擇不指定治療師，並於報到時跟櫃台說有同時約徒手及震波。
     </div>
     <div style={{ background: "#E8F5F0", borderRadius: 7, padding: "8px 12px", display: "flex", gap: 14, fontSize: isAdmin ? 15 : 12, color: "#1A6B5A" }}><span>📅 {ds}</span><span>🕐 {time}</span><span style={{ marginLeft: "auto", fontWeight: 600 }}>盧獨立時段</span></div>
-    <div><label style={aLbl}>患者姓名 *</label><input value={patient} onChange={e => setPatient(e.target.value)} style={aInp} placeholder="請輸入全名" /></div>
-    {isAdmin && <div><label style={aLbl}>病歷號 *</label><input value={chartNum} onChange={e => setChartNum(e.target.value)} style={aInp} placeholder="請輸入病歷號" /></div>}
+    <div><label style={aLbl}>患者姓名 *</label><input value={patient} onChange={e => setPatient(e.target.value)} onBlur={e => isAdmin && dbSearch("name", e.target.value)} style={aInp} placeholder="請輸入全名" /></div>
+    {isAdmin && <div><label style={aLbl}>病歷號 *</label><input value={chartNum} onChange={e => setChartNum(e.target.value)} onBlur={e => dbSearch("chartNum", e.target.value)} style={aInp} placeholder="請輸入病歷號" /></div>}
     {isAdmin
-      ? <div><label style={aLbl}>生日（民國年月日六碼，選填）</label><input value={bday} onChange={e => setBday(e.target.value.replace(/\D/g, "").slice(0, 6))} style={aInp} placeholder="如 800515" maxLength={6} /></div>
+      ? <div><label style={aLbl}>生日（民國年月日六碼，選填）</label><input value={bday} onChange={e => setBday(e.target.value.replace(/\D/g, "").slice(0, 6))} onBlur={e => dbSearch("bday", e.target.value)} style={aInp} placeholder="如 800515" maxLength={6} /></div>
       : <div><label style={aLbl}>生日（民國年月日六碼）*</label><input value={bday} onChange={e => setBday(e.target.value.replace(/\D/g, "").slice(0, 6))} style={aInp} placeholder="如 800515" maxLength={6} /></div>}
     {!isAdmin && <div><label style={aLbl}>病歷號（選填）</label><input value={chartNum} onChange={e => setChartNum(e.target.value)} style={aInp} placeholder="若有病歷號請填入" /></div>}
+    {dbPicker && <div style={{ position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }} onClick={() => setDbPicker(null)}>
+      <div style={{ background: "white", borderRadius: 12, padding: 20, maxWidth: 380, width: "100%", fontFamily: "'Noto Sans TC', sans-serif", maxHeight: 400, overflow: "auto" }} onClick={e => e.stopPropagation()}>
+        <div style={{ fontWeight: 700, fontSize: 14, color: "#3D2B1F", marginBottom: 12 }}>找到 {dbPicker.length} 筆符合患者，請選擇：</div>
+        {dbPicker.slice(0, 20).map((row, i) => (<button key={i} onClick={() => applyDBRow(row)} style={{ display: "block", width: "100%", textAlign: "left", padding: "10px 14px", borderRadius: 8, border: "1.5px solid #D4C5A9", background: "#FFFDF5", marginBottom: 6, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif", fontSize: 13 }}>
+          <strong>#{row.chartNum}</strong> {row.name} <span style={{ color: "#8B7355", marginLeft: 8, fontSize: 12 }}>生日 {row.birthday}</span>
+        </button>))}
+        <button onClick={() => setDbPicker(null)} style={{ marginTop: 4, padding: "8px 0", width: "100%", borderRadius: 8, border: "1.5px solid #D4C5A9", background: "#FFFDF5", color: "#8B7355", cursor: "pointer", fontSize: 13, fontFamily: "'Noto Sans TC', sans-serif" }}>取消</button>
+      </div>
+    </div>}
     <div><label style={aLbl}>治療時長</label><div style={{ display: "flex", gap: 5 }}>{DURATIONS.map(d => (<button key={d} onClick={() => { setDur(d); setErr(""); }} style={{ flex: 1, padding: "7px 0", borderRadius: 7, cursor: "pointer", fontSize: fs.btn, border: dur === d ? `2px solid ${LU_COLOR}` : "1.5px solid #D4C5A9", background: dur === d ? "#E8F5F0" : "#FFFDF5", color: dur === d ? LU_COLOR : "#5A4A3A", fontWeight: dur === d ? 700 : 500, fontFamily: "'Noto Sans TC', sans-serif" }}>{d} 分</button>))}</div></div>
     {isAdmin && <div><label style={aLbl}>自轉／非自轉</label><div style={{ display: "flex", gap: 5 }}>{[{ v: true, l: "自轉" }, { v: false, l: "非自轉" }].map(o => (<button key={String(o.v)} onClick={() => setSelfRef(o.v)} style={{ flex: 1, padding: "7px 0", borderRadius: 7, cursor: "pointer", fontSize: fs.btn, border: selfRef === o.v ? `2px solid ${LU_COLOR}` : "1.5px solid #D4C5A9", background: selfRef === o.v ? "#E8F5F0" : "#FFFDF5", color: selfRef === o.v ? LU_COLOR : "#5A4A3A", fontWeight: selfRef === o.v ? 700 : 500, fontFamily: "'Noto Sans TC', sans-serif" }}>{o.l}</button>))}</div></div>}
     {isAdmin && <div><label style={aLbl}>附註（選填）</label><input value={note} onChange={e => setNote(e.target.value)} style={{ ...aInp, width: "100%", boxSizing: "border-box" }} placeholder="可填寫特殊需求或備忘" /></div>}
@@ -581,7 +631,7 @@ function LuBookingForm({ date, time, appts, onBook, onClose, isAdmin, luSlotCfg 
     {!occupied && hasBuf && !isAdmin && <div style={{ padding: 8, background: "#FFF8E6", borderRadius: 7, fontSize: fs.err, color: "#B8860B", border: "1px solid #E8DCC0" }}>此時段需間隔緩衝</div>}
     {err && <div style={{ color: "#C2563A", fontSize: fs.err, background: "#FFF0EB", padding: "5px 9px", borderRadius: 5 }}>{err}</div>}
     <button onClick={submit} disabled={!canBook} style={{ padding: isAdmin ? 14 : 11, borderRadius: 9, border: "none", cursor: canBook ? "pointer" : "not-allowed", background: canBook ? `linear-gradient(135deg, ${LU_COLOR}, #145A4A)` : "#CCBFB0", color: "white", fontSize: isAdmin ? 17 : 14, fontWeight: 700, fontFamily: "'Noto Sans TC', sans-serif" }}>確認預約</button>
-    <ConfirmModal open={!!confirmBuf} message="此預約違反 15 分鐘間隔規定，確定仍要預約嗎？" onOk={() => { setConfirmBuf(null); finalBook({ id: Date.now(), date: ds, time, duration: dur, patient: confirmBuf.patient, birthday: confirmBuf.birthday, idNum: confirmBuf.idNum || "", chartNum: confirmBuf.chartNum || "", selfRef, note: confirmBuf.note || "" }); }} onCancel={() => setConfirmBuf(null)} />
+    <ConfirmModal open={!!confirmBuf} message="此時段緊鄰連續治療45分鐘以上，確定仍要預約嗎？" onOk={() => { setConfirmBuf(null); finalBook({ id: Date.now(), date: ds, time, duration: dur, patient: confirmBuf.patient, birthday: confirmBuf.birthday, idNum: confirmBuf.idNum || "", chartNum: confirmBuf.chartNum || "", selfRef, note: confirmBuf.note || "" }); }} onCancel={() => setConfirmBuf(null)} />
   </div>);
 }
 
@@ -2146,7 +2196,7 @@ export default function App() {
 
     {/* ── MODALS ── */}
     <Modal open={!!bookingModal} onClose={() => setBookingModal(null)} title={bookingModal?.addExtra ? "外加預約" : "新增預約"}>{bookingModal && <BookingForm date={bookingModal.date} time={bookingModal.time} appts={appts} onBook={handleBook} onClose={() => setBookingModal(null)} isAdmin={isAdmin} cs={cs} mainSlotCfg={mainSlotCfg} addExtra={bookingModal.addExtra} patientDB={patientDB} />}</Modal>
-    <Modal open={!!luBookingModal} onClose={() => setLuBookingModal(null)} title="盧獨立時段預約">{luBookingModal && <LuBookingForm date={luBookingModal.date} time={luBookingModal.time} appts={luAppts} onBook={handleLuBook} onClose={() => setLuBookingModal(null)} isAdmin={isAdmin} luSlotCfg={luSlotCfg} />}</Modal>
+    <Modal open={!!luBookingModal} onClose={() => setLuBookingModal(null)} title="盧獨立時段預約">{luBookingModal && <LuBookingForm date={luBookingModal.date} time={luBookingModal.time} appts={luAppts} onBook={handleLuBook} onClose={() => setLuBookingModal(null)} isAdmin={isAdmin} luSlotCfg={luSlotCfg} patientDB={patientDB} />}</Modal>
     <Modal open={!!adminDetailModal} onClose={() => setAdminDetailModal(null)} title="預約管理">{adminDetailModal && <AdminDetail appt={adminDetailModal} appts={appts} onClose={() => setAdminDetailModal(null)} onDelete={handleDelete} onUpdate={handleUpdate} onAlert={setAlertMsg} onCopyDates={handleCopyDates} onStartCopy={a => { setCopyAskModal({ appt: a, isLu: false }); setAdminDetailModal(null); }} onAddExtra={(a) => { setAdminDetailModal(null); setBookingModal({ date: new Date(a.date), time: a.time, addExtra: true }); }} />}</Modal>
     <Modal open={!!luDetailModal} onClose={() => setLuDetailModal(null)} title="盧獨立時段預約管理">{luDetailModal && <LuAdminDetail appt={luDetailModal} appts={luAppts} onClose={() => setLuDetailModal(null)} onDelete={handleLuDelete} onUpdate={handleLuUpdate} onAlert={setAlertMsg} onCopyDates={handleLuCopyDates} onStartCopy={a => { setCopyAskModal({ appt: a, isLu: true }); setLuDetailModal(null); }} />}</Modal>
     <AlertModal open={!!alertMsg} message={alertMsg} onClose={() => setAlertMsg("")} />
