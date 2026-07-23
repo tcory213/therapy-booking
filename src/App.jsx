@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import * as XLSX from "xlsx";
 import { db } from "./firebase.js";
 import { collection, doc, onSnapshot, addDoc, deleteDoc, updateDoc, setDoc, writeBatch, query, where, getDocs } from "firebase/firestore";
 
@@ -1852,8 +1853,83 @@ export default function App() {
   const [mainSlotCfg, setMainSlotCfg] = useState({});
   const [patientDB, setPatientDB] = useState([]); // [{chartNum, name, birthday, idNum}]
 
-  const loadPatientCSV = (file) => {
+  // Excel code → booking therapist ID
+  const EXCEL_TO_TH = { A: "A", B: "B", C: "C", D: "D", V: "E" };
+  const PERIOD_LABELS = { "0800-1200": "m", "1400-1800": "a", "1800-2130": "e" };
+
+  const loadShiftExcel = (file) => {
     if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: "array", cellDates: true });
+        const ws = wb.Sheets["PT"];
+        if (!ws) { setAlertMsg("❌ 找不到 PT 頁籤"); return; }
+        const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+
+        // Build shift map: { "A-2026-07-01": ["m","a"] }
+        const newShifts = {};
+        let i = 0;
+        while (i < data.length) {
+          const row = data[i];
+          // Date row: contains Date objects
+          const dateCols = [];
+          row.forEach((v, ci) => {
+            if (v instanceof Date || (typeof v === "number" && XLSX.SSF.is_date)) {
+              // Try to get a proper date
+              const d = v instanceof Date ? v : new Date(Math.round((v - 25569) * 86400 * 1000));
+              if (!isNaN(d.getTime()) && d.getFullYear() > 2000) {
+                dateCols.push({ col: ci, ds: fd(d) });
+              }
+            }
+          });
+          if (dateCols.length > 0) {
+            // Next 3 rows are morning / afternoon / evening
+            const periodRows = [data[i + 1], data[i + 2], data[i + 3]].filter(Boolean);
+            periodRows.forEach(pRow => {
+              const periodKey = pRow[0];
+              const period = PERIOD_LABELS[periodKey];
+              if (!period) return;
+              dateCols.forEach(({ col, ds }) => {
+                // Scan 6 columns from the date's column
+                for (let c = col; c < col + 6; c++) {
+                  const code = pRow[c];
+                  const thId = EXCEL_TO_TH[code];
+                  if (!thId) continue;
+                  const key = `${thId}-${ds}`;
+                  if (!newShifts[key]) newShifts[key] = [];
+                  if (!newShifts[key].includes(period)) newShifts[key].push(period);
+                }
+              });
+            });
+            i += 4; // skip date row + 3 period rows
+          } else {
+            i++;
+          }
+        }
+
+        // Sort periods in order m/a/e
+        const ORDER = ["m", "a", "e"];
+        Object.keys(newShifts).forEach(k => {
+          newShifts[k].sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b));
+        });
+
+        const count = Object.keys(newShifts).length;
+        if (count === 0) { setAlertMsg("❌ 未找到任何有效班次，請確認 PT 頁籤格式"); return; }
+
+        // Merge into existing cs and save to Firestore
+        const merged = { ...cs, ...newShifts };
+        setDoc(doc(db, "config", "shifts"), merged)
+          .then(() => setAlertMsg(`✅ 班表匯入成功！共設定 ${count} 筆班次`))
+          .catch(err => setAlertMsg("❌ 儲存失敗：" + err.message));
+      } catch (err) {
+        setAlertMsg("❌ 解析失敗：" + err.message);
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  const loadPatientCSV = (file) => {    if (!file) return;
     const reader = new FileReader();
     reader.onload = e => {
       try {
@@ -2126,6 +2202,10 @@ export default function App() {
             {[{ k: "schedule", l: "排程表" }, { k: "lu", l: "盧獨立時段" }, { k: "lookup", l: "🔍 查詢" }, { k: "salary", l: "薪資" }, { k: "shifts", l: "班表" }].map(t => (<button key={t.k} onClick={() => setAdminTab(t.k)} style={{ padding: "5px 10px", borderRadius: 5, border: "none", cursor: "pointer", background: adminTab === t.k ? (t.k === "lu" ? LU_COLOR : "#C2563A") : "rgba(255,255,255,0.1)", color: adminTab === t.k ? "white" : "#C4B49A", fontWeight: 600, fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}>{t.l}</button>))}
             <div style={{ width: 1, height: 18, background: "#5A4A3A", margin: "0 4px" }} />
             {canUndo && <button onClick={handleUndo} style={{ padding: "5px 10px", borderRadius: 5, border: "1px solid #C4B49A55", background: "rgba(255,255,255,0.08)", color: "#F0C080", cursor: "pointer", fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif" }} title={`可復原 ${undoStack.length} 步`}>↩ 上一步</button>}
+            <label title="上傳 Excel 班表（PT 頁籤）" style={{ padding: "5px 10px", borderRadius: 5, border: "1px solid #C4B49A55", background: "rgba(255,255,255,0.06)", color: "#C4B49A", cursor: "pointer", fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif", whiteSpace: "nowrap" }}>
+              📅 上傳班表
+              <input type="file" accept=".xlsx,.xls" style={{ display: "none" }} onChange={e => { loadShiftExcel(e.target.files[0]); e.target.value = ""; }} />
+            </label>
             <label title={patientDB.length ? `已載入 ${patientDB.length} 筆` : "尚未載入"} style={{ padding: "5px 10px", borderRadius: 5, border: `1px solid ${patientDB.length ? "#6FC" : "#C4B49A55"}`, background: patientDB.length ? "rgba(100,255,150,0.12)" : "rgba(255,255,255,0.06)", color: patientDB.length ? "#6FC" : "#C4B49A", cursor: "pointer", fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif", whiteSpace: "nowrap" }}>
               📂 {patientDB.length ? "病患庫已上傳" : "載入病患庫"}
               <input type="file" accept=".csv,.txt" style={{ display: "none" }} onChange={e => { loadPatientCSV(e.target.files[0]); e.target.value = ""; }} />
