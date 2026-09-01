@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
-import { db } from "./firebase.js";
+import { db, auth } from "./firebase.js";
+import { signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth";
 import { collection, doc, onSnapshot, addDoc, deleteDoc, updateDoc, setDoc, writeBatch, query, where, getDocs } from "firebase/firestore";
 
 /* ═══════════════════════════════════════════ Constants ═══════════════════════════════════════════ */
@@ -23,7 +24,7 @@ const TREAT_TYPES = [
   { id: "swlaser", label: "震波雷射各半" },
 ];
 const TREAT_MAP = Object.fromEntries(TREAT_TYPES.map(t => [t.id, t.label]));
-const ADMIN_PW = "hapi719";
+const ADMIN_EMAIL = "clinic@hapi.local";
 const SLOT_START = "08:30", MORN_END = "12:00", AFT_START = "14:00", EVE_START = "18:00", SLOT_END = "21:30";
 // Pre-computed minute values for constants (avoid repeated toM parsing)
 const M_SLOT_START = 510, M_MORN_END = 720, M_AFT_START = 840, M_EVE_START = 1080, M_SLOT_END = 1290;
@@ -1839,9 +1840,36 @@ function ThFilterBar({ filterTh, setFilterTh, showNames, onLuClick }) {
 }
 
 function PwGate({ onAuth }) {
-  const [pw, setPw] = useState(""); const [err, setErr] = useState(false);
-  const go = () => { if (pw === ADMIN_PW) onAuth(); else { setErr(true); setPw(""); } };
-  return (<div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "55vh", gap: 14 }}><div style={{ fontSize: 36 }}>🔒</div><h2 style={{ margin: 0, fontFamily: "'Noto Serif TC', serif", color: "#3D2B1F", fontSize: 18 }}>後台管理登入</h2><div style={{ display: "flex", gap: 6 }}><input type="password" value={pw} onChange={e => { setPw(e.target.value); setErr(false); }} onKeyDown={e => e.key === "Enter" && go()} placeholder="請輸入密碼" style={{ padding: "9px 12px", borderRadius: 7, border: `1.5px solid ${err ? "#C2563A" : "#D4C5A9"}`, fontSize: 13, background: "#FFFDF5", fontFamily: "'Noto Sans TC', sans-serif", outline: "none", width: 180 }} /><button onClick={go} style={{ padding: "9px 16px", borderRadius: 7, border: "none", cursor: "pointer", background: "linear-gradient(135deg, #3D2B1F, #5A3A2A)", color: "#F5EDDC", fontWeight: 600, fontSize: 13, fontFamily: "'Noto Sans TC', sans-serif" }}>進入</button></div>{err && <span style={{ color: "#C2563A", fontSize: 11 }}>密碼錯誤</span>}</div>);
+  const [pw, setPw] = useState("");
+  const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const go = async () => {
+    if (!pw.trim()) return;
+    setLoading(true); setErr("");
+    try {
+      await signInWithEmailAndPassword(auth, ADMIN_EMAIL, pw);
+      onAuth();
+    } catch (e) {
+      if (e.code === "auth/invalid-credential" || e.code === "auth/wrong-password") setErr("密碼錯誤");
+      else if (e.code === "auth/too-many-requests") setErr("嘗試次數過多，請稍後再試");
+      else if (e.code === "auth/network-request-failed") setErr("網路連線失敗");
+      else setErr("登入失敗：" + e.code);
+      setPw("");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (<div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "55vh", gap: 14 }}>
+    <div style={{ fontSize: 36 }}>🔒</div>
+    <h2 style={{ margin: 0, fontFamily: "'Noto Serif TC', serif", color: "#3D2B1F", fontSize: 18 }}>後台管理登入</h2>
+    <div style={{ display: "flex", gap: 6 }}>
+      <input type="password" value={pw} onChange={e => { setPw(e.target.value); setErr(""); }} onKeyDown={e => e.key === "Enter" && !loading && go()} placeholder="請輸入密碼" disabled={loading} style={{ padding: "9px 12px", borderRadius: 7, border: `1.5px solid ${err ? "#C2563A" : "#D4C5A9"}`, fontSize: 13, background: loading ? "#F0EBE0" : "#FFFDF5", fontFamily: "'Noto Sans TC', sans-serif", outline: "none", width: 180 }} />
+      <button onClick={go} disabled={loading} style={{ padding: "9px 16px", borderRadius: 7, border: "none", cursor: loading ? "wait" : "pointer", background: loading ? "#8B7355" : "linear-gradient(135deg, #3D2B1F, #5A3A2A)", color: "#F5EDDC", fontWeight: 600, fontSize: 13, fontFamily: "'Noto Sans TC', sans-serif" }}>{loading ? "驗證中…" : "進入"}</button>
+    </div>
+    {err && <span style={{ color: "#C2563A", fontSize: 11 }}>{err}</span>}
+  </div>);
 }
 
 /* ═══════════════════════════════════════════ MAIN ═══════════════════════════════════════════ */
@@ -2010,6 +2038,23 @@ export default function App() {
     ensureRangeCovers(fd(next));
   }, [ensureRangeCovers]);
   const [page, setPage] = useState("front"); // front | admin-gate | admin
+  const [authReady, setAuthReady] = useState(false);
+
+  // Restore admin session on reload
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (user && user.email === ADMIN_EMAIL) {
+        setPage(p => p === "front" ? "front" : "admin");
+      }
+      setAuthReady(true);
+    });
+    return () => unsub();
+  }, []);
+
+  const handleLogout = async () => {
+    try { await signOut(auth); } catch (e) { console.error(e); }
+    setPage("front");
+  };
   const [frontTab, setFrontTab] = useState("book"); // book | lu | lookup
   const [adminTab, setAdminTab] = useState("schedule"); // schedule | lu | salary | shifts
   const [adminView, setAdminView] = useState("day");
@@ -2210,7 +2255,7 @@ export default function App() {
               📂 {patientDB.length ? "病患庫已上傳" : "載入病患庫"}
               <input type="file" accept=".csv,.txt" style={{ display: "none" }} onChange={e => { loadPatientCSV(e.target.files[0]); e.target.value = ""; }} />
             </label>
-            <button onClick={() => setPage("front")} style={{ padding: "5px 10px", borderRadius: 5, border: "1px solid #C4B49A55", background: "transparent", color: "#C4B49A", cursor: "pointer", fontSize: 13 }}>返回前台</button>
+            <button onClick={handleLogout} style={{ padding: "5px 10px", borderRadius: 5, border: "1px solid #C4B49A55", background: "transparent", color: "#C4B49A", cursor: "pointer", fontSize: 13 }}>🚪 登出</button>
           </>) : (<>
             {[{ k: "book", l: "📅 預約" }, { k: "lookup", l: "🔍 查詢及取消" }].map(t => (<button key={t.k} onClick={() => setFrontTab(t.k)} style={{ padding: "6px 12px", borderRadius: 5, border: "none", cursor: "pointer", background: frontTab === t.k ? "#C2563A" : "rgba(255,255,255,0.1)", color: frontTab === t.k ? "white" : "#C4B49A", fontWeight: 600, fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}>{t.l}</button>))}
             <div style={{ width: 1, height: 18, background: "#5A4A3A", margin: "0 4px" }} /><button onClick={() => setPage("admin-gate")} style={{ padding: "5px 10px", borderRadius: 5, border: "1px solid #C4B49A55", background: "transparent", color: "#C4B49A", cursor: "pointer", fontSize: 10 }}>🔐 後台</button>
