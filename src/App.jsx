@@ -1955,51 +1955,6 @@ export default function App() {
     reader.readAsArrayBuffer(file);
   };
 
-  const clearAllChartNums = async () => {
-    if (!window.confirm("⚠️ 這會清除所有預約（appts + luAppts）的病歷號欄位，此操作無法復原。確定要繼續嗎？")) return;
-    try {
-      setAlertMsg("🔄 正在清除病歷號，請稍候…");
-      let cleared = 0;
-      for (const colName of ["appts", "luAppts"]) {
-        const snap = await getDocs(collection(db, colName));
-        const docs = snap.docs.filter(d => d.data().chartNum && d.data().chartNum !== "");
-        for (let i = 0; i < docs.length; i += 400) {
-          const batch = writeBatch(db);
-          docs.slice(i, i + 400).forEach(d => { batch.update(d.ref, { chartNum: "" }); cleared++; });
-          await batch.commit();
-        }
-      }
-      setAlertMsg(`✅ 已清除 ${cleared} 筆預約的病歷號`);
-    } catch (e) {
-      console.error(e);
-      setAlertMsg("❌ 清除失敗：" + e.message);
-    }
-  };
-
-  const [clearingIdNums, setClearingIdNums] = useState(false);
-  const clearAllIdNums = async () => {
-    if (!window.confirm("將永久移除所有預約紀錄中的身分證字號欄位，此動作無法復原，確定要執行嗎？")) return;
-    setClearingIdNums(true);
-    let cleared = 0;
-    try {
-      for (const collName of ["appts", "luAppts"]) {
-        const snap = await getDocs(collection(db, collName));
-        for (const d of snap.docs) {
-          const data = d.data();
-          if (data.idNum) {
-            await updateDoc(doc(db, collName, d.id), { idNum: deleteField() });
-            cleared++;
-          }
-        }
-      }
-      setAlertMsg(`✅ 已清除 ${cleared} 筆身分證字號資料`);
-    } catch (e) {
-      setAlertMsg("❌ 清除失敗：" + e.message);
-    } finally {
-      setClearingIdNums(false);
-    }
-  };
-
   const loadPatientCSV = (file) => {    if (!file) return;
     const reader = new FileReader();
     reader.onload = e => {
@@ -2290,7 +2245,6 @@ export default function App() {
             {[{ k: "schedule", l: "排程表" }, { k: "lu", l: "盧獨立時段" }, { k: "lookup", l: "🔍 查詢" }, { k: "salary", l: "薪資" }, { k: "shifts", l: "班表" }].map(t => (<button key={t.k} onClick={() => setAdminTab(t.k)} style={{ padding: "5px 10px", borderRadius: 5, border: "none", cursor: "pointer", background: adminTab === t.k ? (t.k === "lu" ? LU_COLOR : "#C2563A") : "rgba(255,255,255,0.1)", color: adminTab === t.k ? "white" : "#C4B49A", fontWeight: 600, fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}>{t.l}</button>))}
             <div style={{ width: 1, height: 18, background: "#5A4A3A", margin: "0 4px" }} />
             {canUndo && <button onClick={handleUndo} style={{ padding: "5px 10px", borderRadius: 5, border: "1px solid #C4B49A55", background: "rgba(255,255,255,0.08)", color: "#F0C080", cursor: "pointer", fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif" }} title={`可復原 ${undoStack.length} 步`}>↩ 上一步</button>}
-            <button onClick={clearAllIdNums} disabled={clearingIdNums} title="一次性清除所有預約中的身分證字號" style={{ padding: "5px 10px", borderRadius: 5, border: "1px solid #C2563A55", background: "rgba(194,86,58,0.1)", color: "#F0A080", cursor: clearingIdNums ? "wait" : "pointer", fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif", whiteSpace: "nowrap" }}>{clearingIdNums ? "清除中…" : "🗑️ 清除身分證資料"}</button>
             <label title="上傳 Excel 班表（PT 頁籤）" style={{ padding: "5px 10px", borderRadius: 5, border: "1px solid #C4B49A55", background: "rgba(255,255,255,0.06)", color: "#C4B49A", cursor: "pointer", fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif", whiteSpace: "nowrap" }}>
               📅 上傳班表
               <input type="file" accept=".xlsx,.xls" style={{ display: "none" }} onChange={e => { loadShiftExcel(e.target.files[0]); e.target.value = ""; }} />
@@ -2299,7 +2253,6 @@ export default function App() {
               📂 {patientDB.length ? "病患庫已上傳" : "載入病患庫"}
               <input type="file" accept=".csv,.txt" style={{ display: "none" }} onChange={e => { loadPatientCSV(e.target.files[0]); e.target.value = ""; }} />
             </label>
-            <button onClick={clearAllChartNums} style={{ padding: "5px 10px", borderRadius: 5, border: "1px solid #C2563A55", background: "rgba(194,86,58,0.1)", color: "#E8A088", cursor: "pointer", fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif", whiteSpace: "nowrap" }} title="一次性清除所有預約的病歷號欄位">🗑️ 清除病歷號</button>
             <button onClick={handleLogout} style={{ padding: "5px 10px", borderRadius: 5, border: "1px solid #C4B49A55", background: "transparent", color: "#C4B49A", cursor: "pointer", fontSize: 13 }}>🚪 登出</button>
           </>) : (<>
             {[{ k: "book", l: "📅 預約" }, { k: "lookup", l: "🔍 查詢及取消" }].map(t => (<button key={t.k} onClick={() => setFrontTab(t.k)} style={{ padding: "6px 12px", borderRadius: 5, border: "none", cursor: "pointer", background: frontTab === t.k ? "#C2563A" : "rgba(255,255,255,0.1)", color: frontTab === t.k ? "white" : "#C4B49A", fontWeight: 600, fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}>{t.l}</button>))}
