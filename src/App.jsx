@@ -2048,7 +2048,17 @@ export default function App() {
     });
   }, []);
 
-  const loadFrontSlotsRef = useRef(null);
+  const refreshFrontSlots = useCallback(async (range) => {
+    const r = range || loadRange;
+    try {
+      const res = await callFn("getSlotStatus", { from: r.from, to: r.to });
+      setAppts((res.appts || []).map((s, i) => ({ ...s, id: `a_${s.date}_${s.time}_${i}` })));
+      setLuAppts((res.luAppts || []).map((s, i) => ({ ...s, id: `l_${s.date}_${s.time}_${i}` })));
+    } catch (e) {
+      console.error("refreshFrontSlots error:", e);
+      setFireErr("Firestore 連線錯誤：" + e.message);
+    }
+  }, [loadRange]);
 
   useEffect(() => {
     const onErr = (e) => { console.error("Firestore listener error:", e); setFireErr("Firestore 連線錯誤：" + e.message); };
@@ -2067,21 +2077,9 @@ export default function App() {
     } else {
       // 前台：改用 Cloud Function 取得「匿名化」時段狀態（不含姓名/生日/病歷號），
       // 避免前台直接讀取 Firestore 造成病患個資外洩
-      let cancelled = false;
-      const load = async () => {
-        try {
-          const r = await callFn("getSlotStatus", { from: loadRange.from, to: loadRange.to });
-          if (cancelled) return;
-          setAppts((r.appts || []).map((s, i) => ({ ...s, id: `a_${s.date}_${s.time}_${i}` })));
-          setLuAppts((r.luAppts || []).map((s, i) => ({ ...s, id: `l_${s.date}_${s.time}_${i}` })));
-        } catch (e) {
-          if (!cancelled) onErr(e);
-        }
-      };
-      loadFrontSlotsRef.current = load; // 供預約成功後手動立即刷新用
-      load();
-      const interval = setInterval(load, 20000); // 每 20 秒刷新，同時讓 API 保持溫熱
-      return () => { cancelled = true; clearInterval(interval); loadFrontSlotsRef.current = null; };
+      refreshFrontSlots(loadRange);
+      const interval = setInterval(() => refreshFrontSlots(loadRange), 20000); // 每 20 秒刷新，同時讓 API 保持溫熱
+      return () => { clearInterval(interval); };
     }
   }, [loadRange, page]);
 
@@ -2133,7 +2131,7 @@ export default function App() {
         const { id, ...data } = appt;
         const r = await callFn("createBooking", { collection: "appts", ...data });
         if (!r.success) { setAlertMsg("❌ " + (r.error || "預約失敗")); throw new Error(r.error || "預約失敗"); }
-        loadFrontSlotsRef.current?.(); // 立即刷新日曆，不用等 20 秒輪詢
+        await refreshFrontSlots(); // 立即刷新日曆，不用等 20 秒輪詢
       } catch (e) {
         console.error("handleBook (front) error:", e);
         if (!e.message?.startsWith?.("❌")) setAlertMsg("預約失敗：" + e.message);
@@ -2244,7 +2242,7 @@ export default function App() {
         const { id, ...data } = appt;
         const r = await callFn("createBooking", { collection: "luAppts", ...data });
         if (!r.success) { setAlertMsg("❌ " + (r.error || "預約失敗")); throw new Error(r.error || "預約失敗"); }
-        loadFrontSlotsRef.current?.(); // 立即刷新日曆，不用等 20 秒輪詢
+        await refreshFrontSlots(); // 立即刷新日曆，不用等 20 秒輪詢
       } catch (e) {
         console.error("handleLuBook (front) error:", e);
         if (!e.message?.startsWith?.("❌")) setAlertMsg("預約失敗：" + e.message);
