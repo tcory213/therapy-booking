@@ -2048,6 +2048,8 @@ export default function App() {
     });
   }, []);
 
+  const loadFrontSlotsRef = useRef(null);
+
   useEffect(() => {
     const onErr = (e) => { console.error("Firestore listener error:", e); setFireErr("Firestore 連線錯誤：" + e.message); };
 
@@ -2076,9 +2078,10 @@ export default function App() {
           if (!cancelled) onErr(e);
         }
       };
+      loadFrontSlotsRef.current = load; // 供預約成功後手動立即刷新用
       load();
       const interval = setInterval(load, 20000); // 每 20 秒刷新，同時讓 API 保持溫熱
-      return () => { cancelled = true; clearInterval(interval); };
+      return () => { cancelled = true; clearInterval(interval); loadFrontSlotsRef.current = null; };
     }
   }, [loadRange, page]);
 
@@ -2130,6 +2133,7 @@ export default function App() {
         const { id, ...data } = appt;
         const r = await callFn("createBooking", { collection: "appts", ...data });
         if (!r.success) { setAlertMsg("❌ " + (r.error || "預約失敗")); throw new Error(r.error || "預約失敗"); }
+        loadFrontSlotsRef.current?.(); // 立即刷新日曆，不用等 20 秒輪詢
       } catch (e) {
         console.error("handleBook (front) error:", e);
         if (!e.message?.startsWith?.("❌")) setAlertMsg("預約失敗：" + e.message);
@@ -2240,6 +2244,7 @@ export default function App() {
         const { id, ...data } = appt;
         const r = await callFn("createBooking", { collection: "luAppts", ...data });
         if (!r.success) { setAlertMsg("❌ " + (r.error || "預約失敗")); throw new Error(r.error || "預約失敗"); }
+        loadFrontSlotsRef.current?.(); // 立即刷新日曆，不用等 20 秒輪詢
       } catch (e) {
         console.error("handleLuBook (front) error:", e);
         if (!e.message?.startsWith?.("❌")) setAlertMsg("預約失敗：" + e.message);
@@ -2324,7 +2329,7 @@ export default function App() {
             </label>
             <button onClick={handleLogout} style={{ padding: "5px 10px", borderRadius: 5, border: "1px solid #C4B49A55", background: "transparent", color: "#C4B49A", cursor: "pointer", fontSize: 13 }}>🚪 登出</button>
           </>) : (<>
-            {[{ k: "book", l: "📅 預約" }, { k: "lookup", l: "🔍 查詢及取消" }].map(t => (<button key={t.k} onClick={() => setFrontTab(t.k)} style={{ padding: "6px 12px", borderRadius: 5, border: "none", cursor: "pointer", background: frontTab === t.k ? "#C2563A" : "rgba(255,255,255,0.1)", color: frontTab === t.k ? "white" : "#C4B49A", fontWeight: 600, fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}>{t.l}</button>))}
+            {[{ k: "book", l: "📅 預約" }, { k: "lookup", l: "🔍 查詢及取消" }].map(t => (<button key={t.k} onClick={() => { setPage("front"); setFrontTab(t.k); }} style={{ padding: "6px 12px", borderRadius: 5, border: "none", cursor: "pointer", background: frontTab === t.k && page === "front" ? "#C2563A" : "rgba(255,255,255,0.1)", color: frontTab === t.k && page === "front" ? "white" : "#C4B49A", fontWeight: 600, fontSize: 14, fontFamily: "'Noto Sans TC', sans-serif" }}>{t.l}</button>))}
             <div style={{ width: 1, height: 18, background: "#5A4A3A", margin: "0 4px" }} /><button onClick={() => setPage("admin-gate")} style={{ padding: "5px 10px", borderRadius: 5, border: "1px solid #C4B49A55", background: "transparent", color: "#C4B49A", cursor: "pointer", fontSize: 10 }}>🔐 後台</button>
           </>)}
         </div>
