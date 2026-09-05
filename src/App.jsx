@@ -25,6 +25,11 @@ const TREAT_TYPES = [
 ];
 const TREAT_MAP = Object.fromEntries(TREAT_TYPES.map(t => [t.id, t.label]));
 const ADMIN_EMAIL = "clinic@hapi.local";
+const FN_URL = "https://asia-east1-clinic-booking-277e7.cloudfunctions.net/bookingApi";
+async function callFn(action, body) {
+  const r = await fetch(FN_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, ...body }) });
+  return r.json();
+}
 const SLOT_START = "08:30", MORN_END = "12:00", AFT_START = "14:00", EVE_START = "18:00", SLOT_END = "21:30";
 // Pre-computed minute values for constants (avoid repeated toM parsing)
 const M_SLOT_START = 510, M_MORN_END = 720, M_AFT_START = 840, M_EVE_START = 1080, M_SLOT_END = 1290;
@@ -374,9 +379,17 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
   const anyAvail = !slotClosed && (availList.some(t => t.available) || (!addExtra && unspecAvail));
   const selInfo = selTh === "X" ? null : availList.find(t => t.id === selTh);
 
-  const finalBook = (data) => {
+  const finalBook = async (data) => {
+    if (!isAdmin) {
+      try {
+        await onBook(data);
+        setSaved(true);
+      } catch (e) {
+        // 錯誤已由 onBook 內部顯示 alertMsg，這裡不再重複提示
+      }
+      return;
+    }
     onBook(data);
-    if (!isAdmin) { setSaved(true); return; }
     onClose();
   };
   const doBook = (data) => { finalBook(data); };
@@ -387,16 +400,7 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
     if (!isAdmin && (!bday.trim() || bday.length !== 6)) { setErr("請輸入民國年月日六碼"); return; }
     if (selTreats.length === 0) { setErr("請選擇至少一項治療項目"); return; }
     if (!selTh) { setErr("請選擇治療師"); return; }
-    if (!isAdmin) {
-      const idKey = idNum.trim().toUpperCase();
-      const chartKey = chartNum.trim();
-      const sameDayAppt = appts.find(a =>
-        a.date === ds &&
-        ((idKey && a.idNum && a.idNum.toUpperCase() === idKey) ||
-         (chartKey && a.chartNum && a.chartNum.toString() === chartKey))
-      );
-      if (sameDayAppt) { setErr("同一天已有其他預約，需先取消才能再預約"); return; }
-    }
+    // 同日重複預約檢查已改由伺服器端（createBooking Cloud Function）執行
     if (!validRange(time, totalDur)) { setErr("超出營業時間"); return; }
     const isUnspecified = selTh === "X";
     const onDuty = isUnspecified ? true : !selInfo?.isOff;
@@ -586,7 +590,14 @@ function LuBookingForm({ date, time, appts, onBook, onClose, isAdmin, luSlotCfg,
   const aLbl = { display: "block", marginBottom: 4, fontSize: fs.lbl, fontWeight: 600, color: "#5A4A3A" };
   const aInp = { ...inp, fontSize: fs.inp };
 
-  const finalBook = (data) => { onBook(data); onClose(); };
+  const finalBook = async (data) => {
+    try {
+      await onBook(data);
+      onClose();
+    } catch (e) {
+      // 錯誤已由 onBook 內部顯示 alertMsg，這裡不關閉視窗，讓使用者可修改重試
+    }
+  };
   const doBook = () => {
     if (!patient.trim()) { setErr("請輸入患者姓名"); return; }
     if (isAdmin && !chartNum.trim()) { setErr("請輸入病歷號"); return; }
@@ -868,35 +879,53 @@ function LuFrontWeekGrid({ appts, selDate, onCellClick, luSlotCfg }) {
 }
 
 /* ═══════════════════════════════════════════ Front Phone Lookup ═══════════════════════════════════════════ */
-function PhoneLookup({ appts, luAppts, onDelete, onLuDelete }) {
+function PhoneLookup({ onAlert }) {
   const [mode, setMode] = useState("chart"); // "chart" | "namebday"
   const [chartQuery, setChartQuery] = useState("");
   const [nameQuery, setNameQuery] = useState("");
   const [bdayQuery, setBdayQuery] = useState("");
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [results, setResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [searched, setSearched] = useState(false);
 
-  const results = useMemo(() => {
-    const today = fd(new Date());
-    if (mode === "chart") {
-      const q = chartQuery.trim();
-      if (q.length < 1) return [];
-      const mainR = appts.filter(a => a.chartNum && a.chartNum.toString() === q && a.date >= today).map(a => ({ ...a, sys: "main" }));
-      const luR = luAppts.filter(a => a.chartNum && a.chartNum.toString() === q && a.date >= today).map(a => ({ ...a, sys: "lu" }));
-      return [...mainR, ...luR].sort(sortByDateTime);
-    } else {
-      const n = nameQuery.trim();
-      const b = bdayQuery.trim().replace(/\D/g, "").slice(0, 6);
-      if (!n || b.length < 6) return [];
-      const mainR = appts.filter(a => a.patient && a.patient.includes(n) && a.birthday === b && a.date >= today).map(a => ({ ...a, sys: "main" }));
-      const luR = luAppts.filter(a => a.patient && a.patient.includes(n) && a.birthday === b && a.date >= today).map(a => ({ ...a, sys: "lu" }));
-      return [...mainR, ...luR].sort(sortByDateTime);
-    }
-  }, [mode, chartQuery, nameQuery, bdayQuery, appts, luAppts]);
-  const handleDelete = () => {
+  const readyToSearch = mode === "chart" ? chartQuery.trim().length > 0 : (nameQuery.trim() && bdayQuery.length === 6);
+
+  useEffect(() => {
+    if (!readyToSearch) { setResults([]); setSearched(false); return; }
+    setSearching(true);
+    const timer = setTimeout(async () => {
+      try {
+        const r = await callFn("lookupBookings", { mode, chartNum: chartQuery.trim(), name: nameQuery.trim(), birthday: bdayQuery });
+        const merged = [
+          ...(r.appts || []).map(a => ({ ...a, sys: "main" })),
+          ...(r.luAppts || []).map(a => ({ ...a, sys: "lu" })),
+        ].sort(sortByDateTime);
+        setResults(merged);
+      } catch (e) {
+        console.error(e);
+        onAlert?.("查詢失敗，請確認網路連線");
+      } finally {
+        setSearching(false); setSearched(true);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [mode, chartQuery, nameQuery, bdayQuery, readyToSearch]);
+
+  const handleDelete = async () => {
     if (!deleteTarget) return;
     if (deleteTarget.date === fd(new Date())) return; // 今日不可取消
-    if (deleteTarget.sys === "lu") onLuDelete(deleteTarget.id);
-    else onDelete(deleteTarget.id);
+    try {
+      const r = await callFn("cancelBooking", { collection: deleteTarget.sys === "lu" ? "luAppts" : "appts", id: deleteTarget.id, chartNum: chartQuery.trim(), name: nameQuery.trim(), birthday: bdayQuery });
+      if (r.success) {
+        setResults(prev => prev.filter(a => a.id !== deleteTarget.id));
+        onAlert?.("✅ 已成功取消預約");
+      } else {
+        onAlert?.("❌ 取消失敗：" + (r.error || "未知錯誤"));
+      }
+    } catch (e) {
+      onAlert?.("❌ 取消失敗：" + e.message);
+    }
     setDeleteTarget(null);
   };
   return (<div style={{ maxWidth: 500, margin: "0 auto" }}>
@@ -912,7 +941,7 @@ function PhoneLookup({ appts, luAppts, onDelete, onLuDelete }) {
       <input value={bdayQuery} onChange={e => setBdayQuery(e.target.value.replace(/\D/g,"").slice(0,6))} placeholder="生日（民國六碼，如 800515）" style={{ width: "100%", padding: "12px 18px", borderRadius: 10, border: "1.5px solid #D4C5A9", fontSize: 17, background: "#FFFDF5", fontFamily: "'Noto Sans TC', sans-serif", boxSizing: "border-box", outline: "none", textAlign: "center", letterSpacing: 3 }} maxLength={6} />
     </div>}
     {mode === "namebday" && (!nameQuery.trim() || bdayQuery.length < 6) && (nameQuery || bdayQuery) && <p style={{ textAlign: "center", fontSize: 14, color: "#B5A898", margin: "8px 0 0 0" }}>請同時輸入姓名和生日（六碼）</p>}
-    {results.length === 0 && ((mode === "chart" && chartQuery.trim()) || (mode === "namebday" && nameQuery.trim() && bdayQuery.length >= 6)) && <div style={{ textAlign: "center", padding: "30px 0", color: "#8B7355" }}><div style={{ fontSize: 38, marginBottom: 8 }}>📭</div><p style={{ margin: 0, fontSize: 16 }}>查無今日以後的預約紀錄</p></div>}
+    {searched && !searching && results.length === 0 && <div style={{ textAlign: "center", padding: "30px 0", color: "#8B7355" }}><div style={{ fontSize: 38, marginBottom: 8 }}>📭</div><p style={{ margin: 0, fontSize: 16 }}>查無今日以後的預約紀錄</p></div>}
     {results.length > 0 && <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}><p style={{ fontSize: 15, color: "#8B7355", margin: 0 }}>找到 {results.length} 筆</p>
       {results.map(a => { const isLu = a.sys === "lu"; const thObj = isLu ? null : (TH_MAP[a.therapist] || TH_MAP["X"]); const color = isLu ? LU_COLOR : thObj.color; const isToday = a.date === fd(new Date()); return (<div key={a.id} style={{ background: "#FFFDF5", border: `1.5px solid ${color}40`, borderRadius: 10, padding: 16 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}><div style={{ width: 28, height: 28, borderRadius: "50%", background: color, color: "white", fontWeight: 700, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center" }}>{isLu ? "盧" : thLabel(TH_MAP[a.therapist] || TH_MAP["X"])}</div><span style={{ fontWeight: 700, color: "#3D2B1F", fontSize: 17 }}>{isLu ? "盧獨立時段" : thObj.name}</span>{isToday && <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, color: "#2E7D6F", background: "#E6F5EE", padding: "2px 8px", borderRadius: 4 }}>今日</span>}</div>
@@ -1493,7 +1522,7 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
   const [salaryPw, setSalaryPw] = useState("");
   const [salaryPwErr, setSalaryPwErr] = useState(false);
   const [salaryViewer, setSalaryViewer] = useState(null); // null | "all" | therapist id
-  const SALARY_PWS = { "tcory213": "all", "0128": "C", "1111": "D", "7412": "B", "0412": "A", "0422": "A", "5992": "E" };
+  const SALARY_PWS = { "1321": "all", "0128": "C", "1111": "D", "7412": "B", "0412": "A", "0422": "A", "5992": "E" };
 
   const [y, mo] = month.split("-").map(Number);
   const monthStart = `${y}-${String(mo).padStart(2, "0")}-01`;
@@ -1878,6 +1907,24 @@ export default function App() {
   const [luSlotCfg, setLuSlotCfg] = useState({});
   const [mainSlotCfg, setMainSlotCfg] = useState({});
   const [patientDB, setPatientDB] = useState([]); // [{chartNum, name, birthday, idNum}]
+  const [page, setPage] = useState("front"); // front | admin-gate | admin
+  const [authReady, setAuthReady] = useState(false);
+
+  // Restore admin session on reload
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (user && user.email === ADMIN_EMAIL) {
+        setPage(p => p === "front" ? "front" : "admin");
+      }
+      setAuthReady(true);
+    });
+    return () => unsub();
+  }, []);
+
+  const handleLogout = async () => {
+    try { await signOut(auth); } catch (e) { console.error(e); }
+    setPage("front");
+  };
 
   // Excel code → booking therapist ID
   const EXCEL_TO_TH = { A: "A", B: "B", C: "C", D: "D", V: "E" };
@@ -2003,16 +2050,37 @@ export default function App() {
 
   useEffect(() => {
     const onErr = (e) => { console.error("Firestore listener error:", e); setFireErr("Firestore 連線錯誤：" + e.message); };
-    const q1 = query(collection(db, "appts"), where("date", ">=", loadRange.from), where("date", "<=", loadRange.to));
-    const unsub1 = onSnapshot(q1, snap => {
-      setAppts(snap.docs.map(d => ({ ...d.data(), id: d.id })));
-    }, onErr);
-    const q2 = query(collection(db, "luAppts"), where("date", ">=", loadRange.from), where("date", "<=", loadRange.to));
-    const unsub2 = onSnapshot(q2, snap => {
-      setLuAppts(snap.docs.map(d => ({ ...d.data(), id: d.id })));
-    }, onErr);
-    return () => { unsub1(); unsub2(); };
-  }, [loadRange]);
+
+    if (page === "admin") {
+      // 管理員：直接讀取完整資料（Firestore 規則已限制僅限已登入管理員）
+      const q1 = query(collection(db, "appts"), where("date", ">=", loadRange.from), where("date", "<=", loadRange.to));
+      const unsub1 = onSnapshot(q1, snap => {
+        setAppts(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+      }, onErr);
+      const q2 = query(collection(db, "luAppts"), where("date", ">=", loadRange.from), where("date", "<=", loadRange.to));
+      const unsub2 = onSnapshot(q2, snap => {
+        setLuAppts(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+      }, onErr);
+      return () => { unsub1(); unsub2(); };
+    } else {
+      // 前台：改用 Cloud Function 取得「匿名化」時段狀態（不含姓名/生日/病歷號），
+      // 避免前台直接讀取 Firestore 造成病患個資外洩
+      let cancelled = false;
+      const load = async () => {
+        try {
+          const r = await callFn("getSlotStatus", { from: loadRange.from, to: loadRange.to });
+          if (cancelled) return;
+          setAppts((r.appts || []).map((s, i) => ({ ...s, id: `a_${s.date}_${s.time}_${i}` })));
+          setLuAppts((r.luAppts || []).map((s, i) => ({ ...s, id: `l_${s.date}_${s.time}_${i}` })));
+        } catch (e) {
+          if (!cancelled) onErr(e);
+        }
+      };
+      load();
+      const interval = setInterval(load, 20000); // 每 20 秒刷新，同時讓 API 保持溫熱
+      return () => { cancelled = true; clearInterval(interval); };
+    }
+  }, [loadRange, page]);
 
   useEffect(() => {
     const onErr = (e) => { console.error("Firestore listener error:", e); setFireErr("Firestore 連線錯誤：" + e.message); };
@@ -2035,24 +2103,6 @@ export default function App() {
     setSelDateRaw(next);
     ensureRangeCovers(fd(next));
   }, [ensureRangeCovers]);
-  const [page, setPage] = useState("front"); // front | admin-gate | admin
-  const [authReady, setAuthReady] = useState(false);
-
-  // Restore admin session on reload
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      if (user && user.email === ADMIN_EMAIL) {
-        setPage(p => p === "front" ? "front" : "admin");
-      }
-      setAuthReady(true);
-    });
-    return () => unsub();
-  }, []);
-
-  const handleLogout = async () => {
-    try { await signOut(auth); } catch (e) { console.error(e); }
-    setPage("front");
-  };
   const [frontTab, setFrontTab] = useState("book"); // book | lu | lookup
   const [adminTab, setAdminTab] = useState("schedule"); // schedule | lu | salary | shifts
   const [adminView, setAdminView] = useState("day");
@@ -2074,6 +2124,19 @@ export default function App() {
 
   // ── Main appts handlers ──
   const handleBook = async (appt) => {
+    if (page !== "admin") {
+      // 前台：透過 Cloud Function 送出（伺服器端驗證，不直接寫 Firestore）
+      try {
+        const { id, ...data } = appt;
+        const r = await callFn("createBooking", { collection: "appts", ...data });
+        if (!r.success) { setAlertMsg("❌ " + (r.error || "預約失敗")); throw new Error(r.error || "預約失敗"); }
+      } catch (e) {
+        console.error("handleBook (front) error:", e);
+        if (!e.message?.startsWith?.("❌")) setAlertMsg("預約失敗：" + e.message);
+        throw e;
+      }
+      return;
+    }
     try {
       const { id, ...data } = appt;
       const ref = await addDoc(collection(db, "appts"), data);
@@ -2090,12 +2153,6 @@ export default function App() {
       await deleteDoc(doc(db, "appts", id));
       setAdminDetailModal(null);
     } catch (e) { console.error("delete error:", e); setAlertMsg("刪除失敗：" + e.message); }
-  };
-  const handleFrontDelete = async (id) => {
-    try { await deleteDoc(doc(db, "appts", id)); } catch (e) { console.error("front delete error:", e); setAlertMsg("取消失敗：" + e.message); }
-  };
-  const handleFrontLuDelete = async (id) => {
-    try { await deleteDoc(doc(db, "luAppts", id)); } catch (e) { console.error("front lu delete error:", e); setAlertMsg("取消失敗：" + e.message); }
   };
   const handleUpdate = async (id, ch) => {
     try {
@@ -2178,6 +2235,18 @@ export default function App() {
 
   // ── Lu appts handlers ──
   const handleLuBook = async (appt) => {
+    if (page !== "admin") {
+      try {
+        const { id, ...data } = appt;
+        const r = await callFn("createBooking", { collection: "luAppts", ...data });
+        if (!r.success) { setAlertMsg("❌ " + (r.error || "預約失敗")); throw new Error(r.error || "預約失敗"); }
+      } catch (e) {
+        console.error("handleLuBook (front) error:", e);
+        if (!e.message?.startsWith?.("❌")) setAlertMsg("預約失敗：" + e.message);
+        throw e;
+      }
+      return;
+    }
     try {
       const { id, ...data } = appt;
       const ref = await addDoc(collection(db, "luAppts"), data);
@@ -2281,7 +2350,7 @@ export default function App() {
 
       {page === "front" && frontTab === "lu" && (<><NavCtrl selDate={selDate} setSelDate={setSelDate} viewMode="week" setViewMode={() => {}} showDayView={false} /><div style={{ display: "flex", gap: 10, marginBottom: 10, padding: "7px 12px", background: "#F8FDFB", borderRadius: 7, border: `1px solid ${LU_COLOR}30`, fontSize: 14, alignItems: "center" }}><span style={{ fontWeight: 700, color: LU_COLOR }}>盧獨立時段</span><span style={{ color: "#8B7355" }}>14:00 - 20:45</span></div><LuFrontWeekGrid appts={luAppts} selDate={selDate} onCellClick={(d, t) => setLuBookingModal({ date: d, time: t })} luSlotCfg={luSlotCfg} /></>)}
 
-      {page === "front" && frontTab === "lookup" && <div style={{ paddingTop: 20 }}><PhoneLookup appts={appts} luAppts={luAppts} onDelete={handleFrontDelete} onLuDelete={handleFrontLuDelete} /></div>}
+      {page === "front" && frontTab === "lookup" && <div style={{ paddingTop: 20 }}><PhoneLookup onAlert={setAlertMsg} /></div>}
       {page === "admin-gate" && <PwGate onAuth={() => setPage("admin")} />}
 
       {/* ── ADMIN ── */}
