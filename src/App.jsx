@@ -319,6 +319,7 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
   const [confirmData, setConfirmData] = useState(null);
   const [preConfirm, setPreConfirm] = useState(null); // front-end booking preview
   const [saved, setSaved] = useState(false); // success screen
+  const [submitting, setSubmitting] = useState(false); // 送出中 loading
   const ds = fd(date);
 
   const toggleTreat = (id) => { setSelTreats(prev => prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]); setSelTh(""); setErr(""); };
@@ -381,18 +382,21 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
 
   const finalBook = async (data) => {
     if (!isAdmin) {
+      setSubmitting(true);
       try {
         await onBook(data);
         setSaved(true);
       } catch (e) {
         // 錯誤已由 onBook 內部顯示 alertMsg，這裡不再重複提示
+      } finally {
+        setSubmitting(false);
       }
       return;
     }
     onBook(data);
     onClose();
   };
-  const doBook = (data) => { finalBook(data); };
+  const doBook = (data) => finalBook(data);
 
   const submit = () => {
     if (!patient.trim()) { setErr("請輸入患者姓名"); return; }
@@ -528,12 +532,18 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
     {/* Front-end pre-confirm modal */}
     {preConfirm && !isAdmin && (<div style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div style={{ background: "white", borderRadius: 14, padding: 28, maxWidth: 360, width: "100%", fontFamily: "'Noto Sans TC', sans-serif", boxShadow: "0 16px 48px rgba(0,0,0,0.2)" }}>
-        <div style={{ fontSize: 16, fontWeight: 700, color: "#3D2B1F", marginBottom: 16, lineHeight: 1.6 }}>{preConfirm.preview}</div>
-        <div style={{ fontSize: 13, color: "#8B7355", marginBottom: 20 }}>請確認以上資訊是否正確，確認後將完成預約。</div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => { doBook(preConfirm.apptData); setPreConfirm(null); }} style={{ flex: 1, padding: "12px 0", borderRadius: 9, border: "none", background: "linear-gradient(135deg, #C2563A, #A8432B)", color: "white", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>✓ 確認預約</button>
-          <button onClick={() => setPreConfirm(null)} style={{ flex: 1, padding: "12px 0", borderRadius: 9, border: "1.5px solid #D4C5A9", background: "#FFFDF5", color: "#5A4A3A", fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>返回修改</button>
-        </div>
+        {submitting ? (<div style={{ textAlign: "center", padding: "12px 0" }}>
+          <div style={{ fontSize: 40, marginBottom: 12, animation: "spin 1s linear infinite" }}>⏳</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#3D2B1F" }}>送出中，請稍待…</div>
+          <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+        </div>) : (<>
+          <div style={{ fontSize: 16, fontWeight: 700, color: "#3D2B1F", marginBottom: 16, lineHeight: 1.6 }}>{preConfirm.preview}</div>
+          <div style={{ fontSize: 13, color: "#8B7355", marginBottom: 20 }}>請確認以上資訊是否正確，確認後將完成預約。</div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button onClick={async () => { await doBook(preConfirm.apptData); setPreConfirm(null); }} style={{ flex: 1, padding: "12px 0", borderRadius: 9, border: "none", background: "linear-gradient(135deg, #C2563A, #A8432B)", color: "white", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>✓ 確認預約</button>
+            <button onClick={() => setPreConfirm(null)} style={{ flex: 1, padding: "12px 0", borderRadius: 9, border: "1.5px solid #D4C5A9", background: "#FFFDF5", color: "#5A4A3A", fontSize: 15, fontWeight: 600, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>返回修改</button>
+          </div>
+        </>)}
       </div>
     </div>)}
     {/* Success screen */}
@@ -2131,7 +2141,7 @@ export default function App() {
         const { id, ...data } = appt;
         const r = await callFn("createBooking", { collection: "appts", ...data });
         if (!r.success) { setAlertMsg("❌ " + (r.error || "預約失敗")); throw new Error(r.error || "預約失敗"); }
-        await refreshFrontSlots(); // 立即刷新日曆，不用等 20 秒輪詢
+        await refreshFrontSlots();
       } catch (e) {
         console.error("handleBook (front) error:", e);
         if (!e.message?.startsWith?.("❌")) setAlertMsg("預約失敗：" + e.message);
