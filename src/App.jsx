@@ -24,6 +24,14 @@ const TREAT_TYPES = [
   { id: "swlaser", label: "震波雷射各半" },
 ];
 const TREAT_MAP = Object.fromEntries(TREAT_TYPES.map(t => [t.id, t.label]));
+// 特殊限定日：該日僅開放前台民眾預約指定治療項目（後台/現場人員不受限制）。
+// 用法：{ "日期字串": ["允許的治療項目 id，見 TREAT_TYPES"] }
+const SPECIAL_TREAT_ONLY_DAYS = {
+  "2026-10-10": ["shockwave"], // 只開放體外震波，不開放徒手／貼紮／雷射／震波雷射各半
+};
+function specialTreatAllowList(ds) { return SPECIAL_TREAT_ONLY_DAYS[ds] || null; }
+// 若該特殊日不含「徒手」，代表盧獨立時段（純徒手）當天也應對前台民眾關閉
+function isFrontLuBlockedBySpecialDay(ds) { const allow = specialTreatAllowList(ds); return !!allow && !allow.includes("manual"); }
 const ADMIN_EMAIL = "clinic@hapi.local";
 const FN_URL = "https://asia-east1-clinic-booking-277e7.cloudfunctions.net/bookingApi";
 async function callFn(action, body) {
@@ -321,6 +329,7 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
   const [saved, setSaved] = useState(false); // success screen
   const [submitting, setSubmitting] = useState(false); // 送出中 loading
   const ds = fd(date);
+  const specialAllow = specialTreatAllowList(ds);
 
   const toggleTreat = (id) => { setSelTreats(prev => prev.includes(id) ? prev.filter(t => t !== id) : [...prev, id]); setSelTh(""); setErr(""); };
   const totalDur = useMemo(() => calcTreatDur(selTreats, manualDur, swDoses, laserDoses), [selTreats, manualDur, swDoses, laserDoses]);
@@ -403,6 +412,7 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
     if (isAdmin && !chartNum.trim()) { setErr("請輸入病歷號"); return; }
     if (!isAdmin && (!bday.trim() || bday.length !== 6)) { setErr("請輸入民國年月日六碼"); return; }
     if (selTreats.length === 0) { setErr("請選擇至少一項治療項目"); return; }
+    if (!isAdmin && specialAllow && selTreats.some(t => !specialAllow.includes(t))) { setErr(`本日僅開放${specialAllow.map(id => TREAT_MAP[id]).join("、")}預約`); return; }
     if (!selTh) { setErr("請選擇治療師"); return; }
     // 同日重複預約檢查已改由伺服器端（createBooking Cloud Function）執行
     if (!validRange(time, totalDur)) { setErr("超出營業時間"); return; }
@@ -474,9 +484,10 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
       </div>
     </div>}
 
+    {!isAdmin && specialAllow && <div style={{ background: "#FFF0EB", border: "1.5px solid #C2563A", borderRadius: 7, padding: "8px 12px", fontSize: 12, color: "#C2563A", fontWeight: 600 }}>📢 {ds} 當日僅開放{specialAllow.map(id => TREAT_MAP[id]).join("、")}預約，恕不開放其他項目，敬請見諒。</div>}
     <div><label style={lbl}>治療項目（可複選）</label>
       <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
-        {TREAT_TYPES.filter(tt => isAdmin || tt.id !== "taping").map(tt => (<button key={tt.id} onClick={() => toggleTreat(tt.id)} style={treatBtnStyle(selTreats.includes(tt.id))}>{tt.label}</button>))}
+        {TREAT_TYPES.filter(tt => (isAdmin || tt.id !== "taping") && (isAdmin || !specialAllow || specialAllow.includes(tt.id))).map(tt => (<button key={tt.id} onClick={() => toggleTreat(tt.id)} style={treatBtnStyle(selTreats.includes(tt.id))}>{tt.label}</button>))}
       </div>
     </div>
 
@@ -593,7 +604,7 @@ function LuBookingForm({ date, time, appts, onBook, onClose, isAdmin, luSlotCfg,
     return true;
   }, [ds, time, dur, luSlotCfg]);
   const hasBuf = useMemo(() => luBufferConflict(appts, ds, time, dur, null), [appts, ds, time, dur]);
-  const canBook = !occupied && (isAdmin || (isLuDateOpen(ds) && allOpen && !hasBuf));
+  const canBook = !occupied && (isAdmin || (isLuDateOpen(ds) && allOpen && !hasBuf && !isFrontLuBlockedBySpecialDay(ds)));
 
   // Font sizes: admin = +3 levels (lbl 11→14, inp 13→16, body 12→15)
   const fs = isAdmin ? { lbl: 14, inp: 16, btn: 15, note: 13, err: 14 } : { lbl: 11, inp: 13, btn: 14, note: 12, err: 11 };
@@ -872,7 +883,7 @@ function LuFrontWeekGrid({ appts, selDate, onCellClick, luSlotCfg }) {
   const wd = useMemo(() => luWeekDates(selDate), [selDate]);
   const dsArr = useMemo(() => wd.map(d => fd(d)), [wd]);
   const LU_WDAY = ["週一", "週二", "週四"];
-  const dayData = useMemo(() => wd.map((date, di) => { const ds = dsArr[di]; const open = isLuDateOpen(ds) && !isNextMonthLocked(ds); return LU_SLOTS.map(time => {
+  const dayData = useMemo(() => wd.map((date, di) => { const ds = dsArr[di]; const open = isLuDateOpen(ds) && !isNextMonthLocked(ds) && !isFrontLuBlockedBySpecialDay(ds); return LU_SLOTS.map(time => {
     if (!open) return { time, blocked: true };
     const m = toM(time); const occ = appts.some(a => a.date === ds && m >= toM(a.time) && m < toM(a.time) + a.duration);
     const closed = isLuSlotClosed(ds, time, luSlotCfg);
@@ -2351,6 +2362,7 @@ export default function App() {
         <div style={{ background: "#FFFDF5", border: "1.5px solid #E0D5C1", borderRadius: 10, padding: "14px 16px", marginBottom: 12, fontSize: 17, color: "#5A4A3A", lineHeight: 1.8 }}>
           <div style={{ fontWeight: 700, color: "#3D2B1F", fontSize: 19, marginBottom: 8, fontFamily: "'Noto Serif TC', serif" }}>📋 預約說明</div>
           <div style={{ paddingLeft: 4 }}>
+            <div style={{ marginBottom: 8, color: "#C2563A", fontWeight: 700 }}>*反應行情及成本，預計於115/11/1調整徒手價格至350元/15分，調整震波價格至2000元，謝謝您的支持與諒解*</div>
             <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>1.</span> 初診的朋友請先完成門診評估後，再進行治療預約喔！若尚未看診就預約，報到時可能會取消該預約，敬請見諒。</div>
             <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>2.</span> 預約時可以直接選擇時段，也可以點選治療師查看可預約時間；點選「不指定」即可回到全部時段。完成預約後，記得至「查詢及取消」頁面，輸入身分證字號確認是否預約成功。</div>
             <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>3.</span> 當日暫不開放線上預約與取消，請來電洽詢。另，僅限「線上預約」之紀錄可於系統查詢與取消；若是由櫃台預約，則需再請櫃台處理。次月預約功能將於每月25日自動開放，歡迎多加利用。</div>
