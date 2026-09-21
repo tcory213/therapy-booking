@@ -1896,7 +1896,10 @@ function PwGate({ onAuth }) {
     if (!pw.trim()) return;
     setLoading(true); setErr("");
     try {
-      await signInWithEmailAndPassword(auth, ADMIN_EMAIL, pw);
+      const cred = await signInWithEmailAndPassword(auth, ADMIN_EMAIL, pw);
+      // 強制刷新 ID token，確保 Firestore 規則會用到的憑證已經真正就緒，
+      // 避免登入後立刻訂閱 onSnapshot 時因為憑證還沒同步好而被規則擋下（permission-denied）
+      await cred.user.getIdToken(true);
       onAuth();
     } catch (e) {
       if (e.code === "auth/invalid-credential" || e.code === "auth/wrong-password") setErr("密碼錯誤");
@@ -1935,7 +1938,11 @@ export default function App() {
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       if (user && user.email === ADMIN_EMAIL) {
-        setPage(p => p === "front" ? "front" : "admin");
+        user.getIdToken(true).finally(() => {
+          setPage(p => p === "front" ? "front" : "admin");
+          setAuthReady(true);
+        });
+        return;
       }
       setAuthReady(true);
     });
@@ -2082,22 +2089,42 @@ export default function App() {
   }, [loadRange]);
 
   useEffect(() => {
-    const onErr = (e) => { console.error("Firestore listener error:", e); setFireErr("Firestore 連線錯誤：" + e.message); };
-
     if (page === "admin") {
       // 管理員：直接讀取完整資料（Firestore 規則已限制僅限已登入管理員）
-      const q1 = query(collection(db, "appts"), where("date", ">=", loadRange.from), where("date", "<=", loadRange.to));
-      const unsub1 = onSnapshot(q1, snap => {
-        setAppts(snap.docs.map(d => ({ ...d.data(), id: d.id })));
-      }, onErr);
-      const q2 = query(collection(db, "luAppts"), where("date", ">=", loadRange.from), where("date", "<=", loadRange.to));
-      const unsub2 = onSnapshot(q2, snap => {
-        setLuAppts(snap.docs.map(d => ({ ...d.data(), id: d.id })));
-      }, onErr);
-      return () => { unsub1(); unsub2(); };
+      // 登入／頁面重新整理後，Auth 憑證有機率還沒完全同步到 Firestore，
+      // 導致第一次訂閱被規則擋下（permission-denied）。這裡加上短延遲自動重試，
+      // 避免畫面卡在舊的（前台匿名化）資料上，看起來像是「患者姓名不見了」。
+      let cancelled = false;
+      let unsub1 = () => {}, unsub2 = () => {};
+      let retries = 0;
+      const MAX_RETRIES = 4;
+
+      const subscribe = () => {
+        const handleErr = (e) => {
+          console.error("Firestore listener error:", e);
+          if (e.code === "permission-denied" && retries < MAX_RETRIES && !cancelled) {
+            retries++;
+            setTimeout(() => { if (!cancelled) subscribe(); }, 1000 * retries);
+          } else {
+            setFireErr("Firestore 連線錯誤：" + e.message);
+          }
+        };
+        const q1 = query(collection(db, "appts"), where("date", ">=", loadRange.from), where("date", "<=", loadRange.to));
+        unsub1 = onSnapshot(q1, snap => {
+          retries = 0; setFireErr("");
+          setAppts(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+        }, handleErr);
+        const q2 = query(collection(db, "luAppts"), where("date", ">=", loadRange.from), where("date", "<=", loadRange.to));
+        unsub2 = onSnapshot(q2, snap => {
+          setLuAppts(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+        }, handleErr);
+      };
+      subscribe();
+      return () => { cancelled = true; unsub1(); unsub2(); };
     } else {
       // 前台：改用 Cloud Function 取得「匿名化」時段狀態（不含姓名/生日/病歷號），
       // 避免前台直接讀取 Firestore 造成病患個資外洩
+      const onErr = (e) => { console.error("Firestore listener error:", e); setFireErr("Firestore 連線錯誤：" + e.message); };
       refreshFrontSlots(loadRange);
       const interval = setInterval(() => refreshFrontSlots(loadRange), 20000); // 每 20 秒刷新，同時讓 API 保持溫熱
       return () => { clearInterval(interval); };
