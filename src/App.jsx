@@ -128,10 +128,10 @@ function bufferConflictGeneric(appts, ds, time, dur, exId, filterFn) {
   return appts.some(a => {
     if (a.id === exId || a.date !== ds || !filterFn(a)) return false;
     const as = toM(a.time), ae = as + a.duration;
-    // After this appt: new slot starts too close → need gap = a.duration (15 or 30)
+    // 這筆預約在候選時段「之前」：候選時段開始得太早 → 需間隔 = 這筆預約本身的時長
     if (ae > ns - a.duration && ae <= ns) return true;
-    // Before this appt: new slot ends too close → need gap = a.duration (15 or 30)
-    if (ne > as && ne <= as + a.duration) return true;
+    // 這筆預約在候選時段「之後」：候選時段結束得太晚 → 需間隔 = 這筆預約本身的時長
+    if (ne <= as && ne > as - a.duration) return true;
     return false;
   });
 }
