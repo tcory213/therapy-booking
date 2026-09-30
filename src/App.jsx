@@ -2217,12 +2217,14 @@ export default function App() {
     if (!copyMode) return;
     const { appt, copyTh, isLu } = copyMode;
     const { id: _id, date: _date, time: _time, checkedIn: _ci, ...base } = appt;
+    const ds2 = fd(d);
+    const dur2 = appt.duration;
     const pasteData = copyTh && !isLu
-      ? { ...base, date: fd(d), time: t, checkedIn: false, onDuty: base.therapist && base.therapist !== "X" ? getPeriodStateAt(base.therapist, d, t, cs) === "on" : true }
+      ? { ...base, date: ds2, time: t, checkedIn: false, onDuty: base.therapist && base.therapist !== "X" ? getPeriodStateAt(base.therapist, d, t, cs) === "on" : true }
       : copyTh && isLu && targetCollection === "appts"
         // Lu → main with copyTh: use 盧(B), onDuty from target slot
-        ? { patient: appt.patient, birthday: appt.birthday || "", idNum: appt.idNum || "", chartNum: appt.chartNum || "", selfRef: appt.selfRef || false, date: fd(d), time: t, duration: appt.duration, checkedIn: false, therapist: "B", onDuty: getPeriodStateAt("B", d, t, cs) === "on", treats: ["manual"], manualDur: appt.duration, swDoses: 0, laserDoses: 0 }
-      : { patient: appt.patient, birthday: appt.birthday || "", idNum: appt.idNum || "", chartNum: appt.chartNum || "", selfRef: appt.selfRef || false, date: fd(d), time: t, duration: appt.duration, checkedIn: false,
+        ? { patient: appt.patient, birthday: appt.birthday || "", idNum: appt.idNum || "", chartNum: appt.chartNum || "", selfRef: appt.selfRef || false, date: ds2, time: t, duration: appt.duration, checkedIn: false, therapist: "B", onDuty: getPeriodStateAt("B", d, t, cs) === "on", treats: ["manual"], manualDur: appt.duration, swDoses: 0, laserDoses: 0 }
+      : { patient: appt.patient, birthday: appt.birthday || "", idNum: appt.idNum || "", chartNum: appt.chartNum || "", selfRef: appt.selfRef || false, date: ds2, time: t, duration: appt.duration, checkedIn: false,
           ...(targetCollection === "appts" ? { therapist: "X", onDuty: true, treats: appt.treats || ["manual"], manualDur: appt.manualDur || appt.duration, swDoses: appt.swDoses || 0, laserDoses: appt.laserDoses || 0 } : {}) };
 
     const doBook = () => {
@@ -2232,27 +2234,38 @@ export default function App() {
       setAlertMsg(`✅ 已複製「${appt.patient}」到 ${fd(d)} ${t}`);
     };
 
-    // Validate therapist shift if copyTh and has specific therapist
+    const warnings = [];
+
+    // 治療師排班檢查（原本就有）
     if (copyTh) {
       const thId = base.therapist;
-      // Check therapist shift
-      if (thId && thId !== "X" && targetCollection === "appts") {
-        const st = getPeriodStateAt(thId, d, t, cs);
-        if (st === null) {
-          if (!window.confirm(`⚠️ ${TH_MAP[thId]?.name || thId} 在 ${fd(d)} ${t} 無排班，確定仍要貼上嗎？`)) return;
-        }
+      if (thId && thId !== "X" && targetCollection === "appts" && getPeriodStateAt(thId, d, t, cs) === null) {
+        warnings.push(`${TH_MAP[thId]?.name || thId} 在 ${ds2} ${t} 無排班`);
       }
       // Lu copy to main: check 盧(B) shift, but skip onDuty mismatch (Lu = always 班外, but paste can go to either)
-      if (isLu && targetCollection === "appts") {
-        const st = getPeriodStateAt("B", d, t, cs);
-        if (st === null) {
-          if (!window.confirm(`⚠️ 盧治療師 在 ${fd(d)} ${t} 無排班，確定仍要貼上嗎？`)) return;
-        }
-        // No onDuty mismatch check for Lu source
+      if (isLu && targetCollection === "appts" && getPeriodStateAt("B", d, t, cs) === null) {
+        warnings.push(`盧治療師 在 ${ds2} ${t} 無排班`);
       }
     }
+
+    // 目標時段佔用／緩衝檢查（新增：複製貼上之前完全沒檢查，會悄悄覆蓋掉已有的預約）
+    if (targetCollection === "appts") {
+      const thId = pasteData.therapist;
+      if (thId && thId !== "X") {
+        if (slotConflict(appts, ds2, t, dur2, null, a => a.therapist === thId)) warnings.push(`${TH_MAP[thId]?.name || thId} 在此時段已有其他患者`);
+        if (bufferConflict(appts, ds2, t, dur2, thId, null)) warnings.push("與該治療師其他預約間隔不足（違反緩衝規定）");
+      }
+      if (pasteData.onDuty && onDutySlotConflict(appts, ds2, t, dur2, null)) warnings.push("此時段班內已有其他治療師看診中");
+    } else {
+      if (luSlotOccupied(luAppts, ds2, t, dur2, null)) warnings.push("此時段已有其他患者");
+      if (luBufferConflict(luAppts, ds2, t, dur2, null)) warnings.push("與前後預約間隔不足（違反緩衝規定）");
+    }
+
+    if (warnings.length > 0) {
+      if (!window.confirm(`⚠️ ${warnings.join("；")}。確定仍要貼上嗎？`)) return;
+    }
     doBook();
-  }, [copyMode, cs]);
+  }, [copyMode, cs, appts, luAppts]);
 
   const handleUndo = async () => {
     if (!undoStack.length) return;
