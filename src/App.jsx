@@ -840,6 +840,9 @@ function FrontWeekGrid({ appts, selDate, onCellClick, mainSlotCfg, filterTh, cs 
       if (st !== "on") dimmed = true;
       else if (bufferConflict(appts, ds, time, 15, filterTh, null)) { dimmed = true; isBuffer = true; }
       else if (onDutySlotConflict(appts, ds, time, 15, null)) dimmed = true;
+    } else if (!filterTh && !blocked) {
+      // 不指定治療師：這格雖然沒被直接佔用、也沒被關閉，但實際上沒有任何一位治療師能提供服務（排班/緩衝/佔用）
+      if (!computeAnyAvailable(appts, ds, date, time, 15, cs, false)) { dimmed = true; isBuffer = true; }
     }
     return { time, blocked, dimmed, isBuffer, noShift: false };
   }); }), [wd, dsArr, appts, mainSlotCfg, filterTh, cs, today]);
