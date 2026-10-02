@@ -417,12 +417,17 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
   // 真的符合 availList 的可約條件，「不指定」才算可用（admin 後台維持可覆寫）。
   const unspecAvail = (!overOnDutyLimit && !onDutyOccupied && availList.some(t => t.available)) || isAdmin;
   const anyAvail = !slotClosed && (availList.some(t => t.available) || (!addExtra && unspecAvail));
-  // 判斷「此時段無法預約」是不是出在「下半段15分鐘」：如果只約前15分鐘其實可以，但整段30分鐘不行，
-  // 就代表問題出在下半段（不管原因是被佔用、沒排班、還是緩衝衝突）
+  // 判斷「此時段無法預約」是不是出在「下半段15分鐘」：如果只約前15分鐘其實可以（第一格沒被關閉、也有人能服務），
+  // 但整段30分鐘不行（不管原因是第二格被管理員關閉、系統預設關閉、被佔用、沒排班、還是緩衝衝突），
+  // 就代表問題出在下半段
   const secondHalfBlockedOnly = useMemo(() => {
-    if (isAdmin || totalDur !== 30 || slotClosed) return false;
-    return computeAnyAvailable(appts, ds, date, time, 15, cs, false) && !anyAvail;
-  }, [isAdmin, totalDur, slotClosed, appts, ds, date, time, cs, anyAvail]);
+    if (isAdmin || totalDur !== 30) return false;
+    const firstClosed = mainSlotCfg[`${ds}-${time}`] === false
+      || (mainSlotCfg[`${ds}-${time}`] !== true && (isSatAft(date, time) || FIXED_CLOSED_TIMES[date.getDay()]?.has(time)));
+    if (firstClosed) return false; // 第一格本身就有問題，不算「只有下半段」
+    if (!computeAnyAvailable(appts, ds, date, time, 15, cs, false)) return false; // 第一格根本沒人能服務
+    return slotClosed || !anyAvail;
+  }, [isAdmin, totalDur, slotClosed, anyAvail, appts, ds, date, time, cs, mainSlotCfg]);
   const selInfo = selTh === "X" ? null : availList.find(t => t.id === selTh);
 
   const finalBook = async (data) => {
@@ -552,8 +557,9 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
 
     <div><label style={lbl}>選擇治療師</label>
       {selTreats.length === 0 ? <div style={{ padding: 8, background: "#FFF8E6", borderRadius: 7, fontSize: 11, color: "#B8860B", border: "1px solid #E8DCC0" }}>請先選擇治療項目</div>
+      : secondHalfBlockedOnly ? <div style={{ padding: 8, background: "#FFF5F2", borderRadius: 7, fontSize: 11, color: "#C2563A", border: "1px solid #E8C8C0" }}>此時段無人可提供30分鐘治療，請退回15分鐘</div>
       : slotClosed ? <div style={{ padding: 8, background: "#FFF5F2", borderRadius: 7, fontSize: 11, color: "#C2563A", border: "1px solid #E8C8C0" }}>此時段未開放預約</div>
-      : !anyAvail && !isAdmin ? <div style={{ padding: 8, background: "#FFF5F2", borderRadius: 7, fontSize: 11, color: "#C2563A", border: "1px solid #E8C8C0" }}>{secondHalfBlockedOnly ? "此時段無人可提供30分鐘治療，請退回15分鐘" : "此時段無可預約的治療師"}</div>
+      : !anyAvail && !isAdmin ? <div style={{ padding: 8, background: "#FFF5F2", borderRadius: 7, fontSize: 11, color: "#C2563A", border: "1px solid #E8C8C0" }}>此時段無可預約的治療師</div>
       : <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
           {availList.map(t => { const sel2 = selTh === t.id; return (
             <button key={t.id} disabled={!t.available} onClick={() => { setSelTh(t.id); setErr(""); }} style={thBtnStyle(sel2, t.color, t.available)}>
