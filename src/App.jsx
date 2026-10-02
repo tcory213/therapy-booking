@@ -84,6 +84,16 @@ function getShiftArr(tid, date, cs) { const k = `${tid}-${fd(date)}`; return cs[
 function timePeriod(time) { const m = toM(time); if (m < M_MORN_END) return "m"; if (m < M_EVE_START) return "a"; return "e"; }
 function getPeriodState(arr, pk) { if (arr.includes(pk)) return "on"; if (arr.includes(pk + "o")) return "off"; return null; }
 function getPeriodStateAt(tid, date, time, cs) { const arr = getShiftArr(tid, date, cs); return getPeriodState(arr, timePeriod(time)); }
+// 檢查某治療師在「連續一段時間」（例如 30 分鐘＝2格）內是否能連續服務，而不是只看開始那一刻的班表
+// 回傳 "on"（整段都正常上班）｜"off"（整段都有排班但至少一段是班外，比照原本班外覆寫邏輯）｜null（有任一段完全沒排班，視為無法連續服務）
+function getPeriodStateForRange(tid, date, time, dur, cs) {
+  const n = Math.max(1, Math.round(dur / 15));
+  const states = [];
+  for (let i = 0; i < n; i++) states.push(getPeriodStateAt(tid, date, fM(toM(time) + i * 15), cs));
+  if (states.some(s => !s)) return null;
+  if (states.every(s => s === "on")) return "on";
+  return "off";
+}
 function validRange(st, dur) { const s = toM(st); for (let i = 0; i < dur / 15; i++) { const m = s + i * 15; if (!((m >= M_SLOT_START && m < M_MORN_END) || (m >= M_AFT_START && m < M_SLOT_END))) return false; } return true; }
 function luValidRange(st, dur) { const s = toM(st); for (let i = 0; i < dur / 15; i++) { const m = s + i * 15; if (m < M_LU_START || m >= M_LU_END) return false; } return true; }
 // 盧獨立時段僅週一(1)、週二(2)、週四(4)；開放隔天～次月底
@@ -136,6 +146,24 @@ function bufferConflictGeneric(appts, ds, time, dur, exId, filterFn) {
   });
 }
 function bufferConflict(appts, ds, time, dur, tid, exId) { return bufferConflictGeneric(appts, ds, time, dur, exId, a => a.therapist === tid); }
+// 給定某個開始時間與時長，判斷「是否至少有一位治療師能連續、無緩衝衝突地服務整段時間」
+// （admin 一律視為可用，因為後台本來就可以覆寫各種限制並二次確認）
+function computeAnyAvailable(appts, ds, date, time, dur, cs, isAdmin) {
+  if (isAdmin) return true;
+  if (dur === 0) return true;
+  const occ = onDutySlotConflict(appts, ds, time, dur, null);
+  const overLimit = dur > 30;
+  return THERAPISTS.some(t => {
+    const st = getPeriodStateForRange(t.id, date, time, dur, cs);
+    if (!st) return false;
+    const isOff = st === "off";
+    if (!isOff && overLimit) return false;
+    if (isOff) return false;
+    if (!isOff && occ) return false;
+    if (bufferConflict(appts, ds, time, dur, t.id, null)) return false;
+    return true;
+  });
+}
 function luBufferConflict(appts, ds, time, dur, exId) {
   // 盧獨立時段：只有緊鄰的連續區塊達到 45 分鐘以上才需緩衝
   const ns = toM(time), ne = ns + dur;
@@ -352,7 +380,7 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
   const onDutyOccupied = useMemo(() => totalDur > 0 ? onDutySlotConflict(appts, ds, time, totalDur, null) : false, [appts, ds, time, totalDur]);
 
   const availList = useMemo(() => THERAPISTS.map(t => {
-    const st = getPeriodStateAt(t.id, date, time, cs);
+    const st = addExtra ? getPeriodStateAt(t.id, date, time, cs) : getPeriodStateForRange(t.id, date, time, totalDur || 15, cs);
     if (!st) return { ...t, available: false, adminOverride: false, reason: "無班", isOff: false };
     if (addExtra) {
       const isOff = st === "off";
@@ -384,9 +412,17 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
     }
   }), [date, time, totalDur, appts, ds, cs, isAdmin, onDutyOccupied, addExtra, overOnDutyLimit]);
 
-  // "不指定" is on-duty → blocked if slot already has on-duty appt OR over 2-slot limit
-  const unspecAvail = (!overOnDutyLimit && !onDutyOccupied) || isAdmin;
+  // "不指定"：以前只看「時段有沒有被整段佔用、有沒有超過班內上限」，完全沒檢查是否真的有「某一位」治療師
+  // 能連續、無緩衝衝突地服務整段時間，等於是一個沒有實際把關的後門。現在改成：至少要有一位治療師
+  // 真的符合 availList 的可約條件，「不指定」才算可用（admin 後台維持可覆寫）。
+  const unspecAvail = (!overOnDutyLimit && !onDutyOccupied && availList.some(t => t.available)) || isAdmin;
   const anyAvail = !slotClosed && (availList.some(t => t.available) || (!addExtra && unspecAvail));
+  // 判斷「此時段無法預約」是不是出在「下半段15分鐘」：如果只約前15分鐘其實可以，但整段30分鐘不行，
+  // 就代表問題出在下半段（不管原因是被佔用、沒排班、還是緩衝衝突）
+  const secondHalfBlockedOnly = useMemo(() => {
+    if (isAdmin || totalDur !== 30 || slotClosed) return false;
+    return computeAnyAvailable(appts, ds, date, time, 15, cs, false) && !anyAvail;
+  }, [isAdmin, totalDur, slotClosed, appts, ds, date, time, cs, anyAvail]);
   const selInfo = selTh === "X" ? null : availList.find(t => t.id === selTh);
 
   const finalBook = async (data) => {
@@ -466,6 +502,7 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
   });
 
   return (<div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+    {!isAdmin && !addExtra && <div style={{ fontSize: 11, color: "#8B7355", lineHeight: 1.6, marginTop: -6 }}>為維護治療品質，有許多內規限制，如同治療師需緩衝、預約上限30分鐘等。若無法按確認按鈕，通常是違反規則，請更改治療師或更改時段即可。</div>}
     <div style={{ background: "#F5EDDC", borderRadius: 7, padding: "8px 12px", display: "flex", gap: 14, fontSize: 12, color: "#5A4A3A" }}><span>📅 {ds}</span><span>🕐 {time}</span></div>
     <div><label style={lbl}>患者姓名 *</label><input value={patient} onChange={e => setPatient(e.target.value)} onBlur={e => isAdmin && dbSearch("name", e.target.value)} style={inp} placeholder="請輸入全名" /></div>
     {isAdmin && <div><label style={lbl}>病歷號 *</label><input value={chartNum} onChange={e => setChartNum(e.target.value)} onBlur={e => dbSearch("chartNum", e.target.value)} style={inp} placeholder="請輸入病歷號" /></div>}
@@ -516,7 +553,7 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
     <div><label style={lbl}>選擇治療師</label>
       {selTreats.length === 0 ? <div style={{ padding: 8, background: "#FFF8E6", borderRadius: 7, fontSize: 11, color: "#B8860B", border: "1px solid #E8DCC0" }}>請先選擇治療項目</div>
       : slotClosed ? <div style={{ padding: 8, background: "#FFF5F2", borderRadius: 7, fontSize: 11, color: "#C2563A", border: "1px solid #E8C8C0" }}>此時段未開放預約</div>
-      : !anyAvail && !isAdmin ? <div style={{ padding: 8, background: "#FFF5F2", borderRadius: 7, fontSize: 11, color: "#C2563A", border: "1px solid #E8C8C0" }}>此時段無可預約的治療師</div>
+      : !anyAvail && !isAdmin ? <div style={{ padding: 8, background: "#FFF5F2", borderRadius: 7, fontSize: 11, color: "#C2563A", border: "1px solid #E8C8C0" }}>{secondHalfBlockedOnly ? "此時段無人可提供30分鐘治療，請退回15分鐘" : "此時段無可預約的治療師"}</div>
       : <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
           {availList.map(t => { const sel2 = selTh === t.id; return (
             <button key={t.id} disabled={!t.available} onClick={() => { setSelTh(t.id); setErr(""); }} style={thBtnStyle(sel2, t.color, t.available)}>
