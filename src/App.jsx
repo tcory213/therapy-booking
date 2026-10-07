@@ -412,6 +412,9 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
     }
   }), [date, time, totalDur, appts, ds, cs, isAdmin, onDutyOccupied, addExtra, overOnDutyLimit]);
 
+  // 11:45／21:15 是上午／全天的最末一格，30 分鐘治療會跨到 12:00／21:45，根本超出營業時段範圍（不是業務規則、
+  // 是時段表本身就不存在這個組合），所以不管前台後台一律阻擋，不走「可被 admin 覆寫」那一套
+  const isLastSlotOverflow = totalDur === 30 && (time === "11:45" || time === "21:15");
   // "不指定"：以前只看「時段有沒有被整段佔用、有沒有超過班內上限」，完全沒檢查是否真的有「某一位」治療師
   // 能連續、無緩衝衝突地服務整段時間，等於是一個沒有實際把關的後門。現在改成：至少要有一位治療師
   // 真的符合 availList 的可約條件，「不指定」才算可用（admin 後台維持可覆寫）。
@@ -456,7 +459,7 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
     if (!isAdmin && specialAllow && selTreats.some(t => !specialAllow.includes(t))) { setErr(`本日僅開放${specialAllow.map(id => TREAT_MAP[id]).join("、")}預約`); return; }
     if (!selTh) { setErr("請選擇治療師"); return; }
     // 同日重複預約檢查已改由伺服器端（createBooking Cloud Function）執行
-    if (!validRange(time, totalDur)) { setErr("超出營業時間"); return; }
+    if (!validRange(time, totalDur)) { setErr(isLastSlotOverflow ? "此為最末時段只能提供15分鐘治療" : "超出營業時間"); return; }
     const isUnspecified = selTh === "X";
     const onDuty = isUnspecified ? true : !selInfo?.isOff;
     if (onDuty && overOnDutyLimit && !isAdmin) { setErr("班內治療最多占用 2 格（30 分鐘）"); return; }
@@ -507,7 +510,7 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
   });
 
   return (<div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-    {!isAdmin && !addExtra && <div style={{ fontSize: 11, color: "#8B7355", lineHeight: 1.6, marginTop: -6 }}>為維護治療品質，有許多內規限制，如同治療師需緩衝、預約上限30分鐘等。若無法按確認按鈕，通常是違反規則，請更改治療師或更改時段即可。</div>}
+    {!isAdmin && !addExtra && <div style={{ fontSize: 11, color: "#8B7355", lineHeight: 1.6, marginTop: -6 }}>為維護治療品質，有許多內規限制，如預約上限30分鐘、同治療師需緩衝等。若無法按確認按鈕，通常是違反規則，請更改治療師或更改時段即可。</div>}
     <div style={{ background: "#F5EDDC", borderRadius: 7, padding: "8px 12px", display: "flex", gap: 14, fontSize: 12, color: "#5A4A3A" }}><span>📅 {ds}</span><span>🕐 {time}</span></div>
     <div><label style={lbl}>患者姓名 *</label><input value={patient} onChange={e => setPatient(e.target.value)} onBlur={e => isAdmin && dbSearch("name", e.target.value)} style={inp} placeholder="請輸入全名" /></div>
     {isAdmin && <div><label style={lbl}>病歷號 *</label><input value={chartNum} onChange={e => setChartNum(e.target.value)} onBlur={e => dbSearch("chartNum", e.target.value)} style={inp} placeholder="請輸入病歷號" /></div>}
@@ -557,7 +560,8 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
 
     <div><label style={lbl}>選擇治療師</label>
       {selTreats.length === 0 ? <div style={{ padding: 8, background: "#FFF8E6", borderRadius: 7, fontSize: 11, color: "#B8860B", border: "1px solid #E8DCC0" }}>請先選擇治療項目</div>
-      : secondHalfBlockedOnly ? <div style={{ padding: 8, background: "#FFF5F2", borderRadius: 7, fontSize: 11, color: "#C2563A", border: "1px solid #E8C8C0" }}>此時段無人可提供30分鐘治療，請退回15分鐘</div>
+      : isLastSlotOverflow ? <div style={{ padding: 8, background: "#FFF5F2", borderRadius: 7, fontSize: 11, color: "#C2563A", border: "1px solid #E8C8C0" }}>此為最末時段只能提供15分鐘治療</div>
+      : secondHalfBlockedOnly ? <div style={{ padding: 8, background: "#FFF5F2", borderRadius: 7, fontSize: 11, color: "#C2563A", border: "1px solid #E8C8C0" }}>很抱歉，此時段只能安排15分鐘治療，如需30分鐘，請選擇其他時段</div>
       : slotClosed ? <div style={{ padding: 8, background: "#FFF5F2", borderRadius: 7, fontSize: 11, color: "#C2563A", border: "1px solid #E8C8C0" }}>此時段未開放預約</div>
       : !anyAvail && !isAdmin ? <div style={{ padding: 8, background: "#FFF5F2", borderRadius: 7, fontSize: 11, color: "#C2563A", border: "1px solid #E8C8C0" }}>此時段無可預約的治療師</div>
       : <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
@@ -581,7 +585,7 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
     {isAdmin && <div><label style={lbl}>自轉／非自轉</label><div style={{ display: "flex", gap: 5 }}>{[{ v: true, l: "自轉" }, { v: false, l: "非自轉" }].map(o => (<button key={String(o.v)} onClick={() => setSelfRef(o.v)} style={{ flex: 1, padding: "7px 0", borderRadius: 7, cursor: "pointer", fontSize: 12, border: selfRef === o.v ? "2px solid #5B6ABF" : "1.5px solid #D4C5A9", background: selfRef === o.v ? "#EEEEFF" : "#FFFDF5", color: selfRef === o.v ? "#5B6ABF" : "#5A4A3A", fontWeight: selfRef === o.v ? 700 : 500, fontFamily: "'Noto Sans TC', sans-serif" }}>{o.l}</button>))}</div></div>}
     <div><label style={lbl}>附註（選填）</label><input value={note} onChange={e => setNote(e.target.value)} style={inp} placeholder="可填寫特殊需求或備忘" /></div>
     {err && <div style={{ color: "#C2563A", fontSize: 11, background: "#FFF0EB", padding: "5px 9px", borderRadius: 5 }}>{err}</div>}
-    <button onClick={submit} disabled={!anyAvail && !isAdmin} style={{ padding: 11, borderRadius: 9, border: "none", cursor: (anyAvail || isAdmin) ? "pointer" : "not-allowed", background: (anyAvail || isAdmin) ? "linear-gradient(135deg, #C2563A, #A8432B)" : "#CCBFB0", color: "white", fontSize: 14, fontWeight: 700, fontFamily: "'Noto Sans TC', sans-serif" }}>確認預約</button>
+    <button onClick={submit} disabled={(!anyAvail && !isAdmin) || isLastSlotOverflow} style={{ padding: 11, borderRadius: 9, border: "none", cursor: ((anyAvail || isAdmin) && !isLastSlotOverflow) ? "pointer" : "not-allowed", background: ((anyAvail || isAdmin) && !isLastSlotOverflow) ? "linear-gradient(135deg, #C2563A, #A8432B)" : "#CCBFB0", color: "white", fontSize: 14, fontWeight: 700, fontFamily: "'Noto Sans TC', sans-serif" }}>確認預約</button>
     <ConfirmModal open={!!confirmData} message={confirmData?.message || ""} onOk={() => { doBook(confirmData.apptData); setConfirmData(null); }} onCancel={() => setConfirmData(null)} />
     {/* Front-end pre-confirm modal */}
     {preConfirm && !isAdmin && (<div style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
