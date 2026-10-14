@@ -1982,6 +1982,9 @@ export default function App() {
   const [mainSlotCfg, setMainSlotCfg] = useState({});
   const [patientDB, setPatientDB] = useState([]); // [{chartNum, name, birthday, idNum}]
   const [page, setPage] = useState("front"); // front | admin-gate | admin
+  // 隨時反映最新的 page，給非同步回呼判斷「回來的時候是不是已經進了後台」用
+  const pageRef = useRef(page);
+  pageRef.current = page;
   const [authReady, setAuthReady] = useState(false);
 
   // Restore admin session on reload
@@ -2130,11 +2133,14 @@ export default function App() {
     const r = range || loadRange;
     try {
       const res = await callFn("getSlotStatus", { from: r.from, to: r.to });
+      // 若這個（可能很慢的）前台請求回來時，使用者已經進了後台，就丟棄這份「匿名化」資料，
+      // 否則會把後台 onSnapshot 剛載入的完整資料（含姓名）蓋掉，而且不會再自動恢復
+      if (pageRef.current === "admin") return;
       setAppts((res.appts || []).map((s, i) => ({ ...s, id: `a_${s.date}_${s.time}_${i}` })));
       setLuAppts((res.luAppts || []).map((s, i) => ({ ...s, id: `l_${s.date}_${s.time}_${i}` })));
     } catch (e) {
       console.error("refreshFrontSlots error:", e);
-      setFireErr("Firestore 連線錯誤：" + e.message);
+      if (pageRef.current !== "admin") setFireErr("Firestore 連線錯誤：" + e.message);
     }
   }, [loadRange]);
 
