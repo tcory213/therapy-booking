@@ -354,6 +354,13 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
   const [selTh, setSelTh] = useState(""); const [selfRef, setSelfRef] = useState(false); const [err, setErr] = useState("");
   const [confirmData, setConfirmData] = useState(null);
   const [preConfirm, setPreConfirm] = useState(null); // front-end booking preview
+  // 前台：選到 11:30–12:00（11:30、11:45）或 21:00–21:30（21:00、21:15）的空格時，自動跳出提前報到提醒
+  const arriveNoticeMsg = (!isAdmin && !addExtra)
+    ? ((time === "11:30" || time === "11:45") ? "提醒您，請提前於11:00前報到，以便先復健再做自費治療喔"
+      : (time === "21:00" || time === "21:15") ? "提醒您，請提前於20:30前報到，以便先復健再做自費治療喔" : "")
+    : "";
+  const [arriveNotice, setArriveNotice] = useState(arriveNoticeMsg);
+  useEffect(() => { setArriveNotice(arriveNoticeMsg); }, [arriveNoticeMsg, date]);
   const [saved, setSaved] = useState(false); // success screen
   const [submitting, setSubmitting] = useState(false); // 送出中 loading
   const ds = fd(date);
@@ -586,6 +593,15 @@ function BookingForm({ date, time, appts, onBook, onClose, isAdmin, cs, mainSlot
     <div><label style={lbl}>附註（選填）</label><input value={note} onChange={e => setNote(e.target.value)} style={inp} placeholder="可填寫特殊需求或備忘" /></div>
     {err && <div style={{ color: "#C2563A", fontSize: 11, background: "#FFF0EB", padding: "5px 9px", borderRadius: 5 }}>{err}</div>}
     <button onClick={submit} disabled={(!anyAvail && !isAdmin) || isLastSlotOverflow} style={{ padding: 11, borderRadius: 9, border: "none", cursor: ((anyAvail || isAdmin) && !isLastSlotOverflow) ? "pointer" : "not-allowed", background: ((anyAvail || isAdmin) && !isLastSlotOverflow) ? "linear-gradient(135deg, #C2563A, #A8432B)" : "#CCBFB0", color: "white", fontSize: 14, fontWeight: 700, fontFamily: "'Noto Sans TC', sans-serif" }}>確認預約</button>
+    {/* 前台：11:30–12:00／21:00–21:30 提前報到提醒 */}
+    {arriveNotice && !isAdmin && (<div style={{ position: "fixed", inset: 0, zIndex: 3000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+      <div onClick={() => setArriveNotice("")} style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.45)" }} />
+      <div style={{ position: "relative", background: "#FFFDF5", borderRadius: 12, padding: "28px 28px 22px", maxWidth: 360, width: "100%", boxShadow: "0 16px 60px rgba(0,0,0,0.25)", textAlign: "center", fontFamily: "'Noto Sans TC', sans-serif" }}>
+        <div style={{ fontSize: 36, marginBottom: 10 }}>⏰</div>
+        <p style={{ fontSize: 15, fontWeight: 700, color: "#3D2B1F", margin: "0 0 18px 0", lineHeight: 1.6 }}>{arriveNotice}</p>
+        <button onClick={() => setArriveNotice("")} style={{ padding: "9px 32px", borderRadius: 8, border: "none", background: "#C2563A", color: "white", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: "'Noto Sans TC', sans-serif" }}>我知道了</button>
+      </div>
+    </div>)}
     <ConfirmModal open={!!confirmData} message={confirmData?.message || ""} onOk={() => { doBook(confirmData.apptData); setConfirmData(null); }} onCancel={() => setConfirmData(null)} />
     {/* Front-end pre-confirm modal */}
     {preConfirm && !isAdmin && (<div style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
