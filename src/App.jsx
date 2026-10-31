@@ -1566,33 +1566,38 @@ function LuAdminDetail({ appt, appts, onClose, onDelete, onUpdate, onAlert, onCo
   </div>);
 }
 
-function calcRevenue(dur, tt) { return (dur / 15) * (tt === "taping" ? 150 : 300); }
+// 115/11/1（西元 2026-11-01）起調價：徒手 300→350／15分、貼紮抽成基準 150→200、震波與震波雷射各半抽成 100→125／份。
+// 以預約日期判斷，11/1 以前的舊資料（含 10 月薪資）仍照舊價計算。單純雷射維持 100。
+const NEW_PRICE_FROM = "2026-11-01";
+const isNewPrice = (date) => !!date && date >= NEW_PRICE_FROM;
+const swPayRate = (date) => (isNewPrice(date) ? 125 : 100);
+function calcRevenue(dur, tt, date) { return (dur / 15) * (tt === "taping" ? (isNewPrice(date) ? 200 : 150) : (isNewPrice(date) ? 350 : 300)); }
 function calcPay(a) {
   if (!a.checkedIn) return 0;
   const treats = getApptTreats(a);
   let total = 0;
   const rate = a.onDuty ? (a.selfRef ? 0.7 : 0.4) : (a.selfRef ? 0.9 : 0.6);
   for (const tt of treats) {
-    if (tt === "shockwave") total += getApptSwDoses(a) * 100;
+    if (tt === "shockwave") total += getApptSwDoses(a) * swPayRate(a.date);
     else if (tt === "laser") total += getApptLaserDoses(a) * 100;
-    else if (tt === "swlaser") total += 100;
-    else if (tt === "manual") total += Math.round(calcRevenue(getApptManualDur(a), "manual") * rate);
-    else if (tt === "taping") total += Math.round(calcRevenue(15, "taping") * rate);
+    else if (tt === "swlaser") total += swPayRate(a.date);
+    else if (tt === "manual") total += Math.round(calcRevenue(getApptManualDur(a), "manual", a.date) * rate);
+    else if (tt === "taping") total += Math.round(calcRevenue(15, "taping", a.date) * rate);
   }
   return total;
 }
 function calcPartialPay(a, forType) {
   if (!a.checkedIn) return 0;
-  if (forType === "shockwave") return getApptSwDoses(a) * 100;
+  if (forType === "shockwave") return getApptSwDoses(a) * swPayRate(a.date);
   if (forType === "laser") return getApptLaserDoses(a) * 100;
-  if (forType === "swlaser") return 100;
+  if (forType === "swlaser") return swPayRate(a.date);
   const dur = forType === "manual" ? getApptManualDur(a) : 15;
   const rate = a.onDuty ? (a.selfRef ? 0.7 : 0.4) : (a.selfRef ? 0.9 : 0.6);
-  return Math.round(calcRevenue(dur, forType) * rate);
+  return Math.round(calcRevenue(dur, forType, a.date) * rate);
 }
 function calcLuPay(a) {
   if (!a.checkedIn) return 0;
-  return Math.round(calcRevenue(a.duration, "manual") * (a.selfRef ? 0.9 : 0.6));
+  return Math.round(calcRevenue(a.duration, "manual", a.date) * (a.selfRef ? 0.9 : 0.6));
 }
 
 function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
@@ -1633,7 +1638,7 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
       manualMin: manualChecked.reduce((s, a) => s + getApptManualDur(a), 0),
       manualPay: manualChecked.reduce((s, a) => s + calcPartialPay(a, "manual"), 0),
       tapingPay: tapingChecked.reduce((s, a) => s + calcPartialPay(a, "taping"), 0),
-      otherPay: swTotalDoses * 100 + laserTotalDoses * 100 + swlaserChecked.length * 100,
+      otherPay: swChecked.reduce((s, a) => s + getApptSwDoses(a) * swPayRate(a.date), 0) + laserTotalDoses * 100 + swlaserChecked.reduce((s, a) => s + swPayRate(a.date), 0),
     };
   }), [monthAppts]);
 
@@ -1660,7 +1665,7 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
     const getDate2 = (ds) => { if (!dateCache[ds]) dateCache[ds] = new Date(ds); return dateCache[ds]; };
     // 全團分潤：班內徒手 → 所有其他治療師各5%（不限共班）
     monthAppts.filter(a => a.checkedIn && a.onDuty && getApptTreats(a).includes("manual") && a.therapist !== "X").forEach(a => {
-      const revenue = calcRevenue(getApptManualDur(a), "manual");
+      const revenue = calcRevenue(getApptManualDur(a), "manual", a.date);
       THERAPISTS.forEach(t => {
         if (t.id === a.therapist) return;
         team[t.id] += Math.round(revenue * 0.05);
@@ -1682,8 +1687,8 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
       detail.forEach(a => {
         const treats = getApptTreats(a);
         let revenue = 0;
-        if (treats.includes("manual")) revenue += calcRevenue(getApptManualDur(a), "manual");
-        if (treats.includes("taping")) revenue += calcRevenue(15, "taping");
+        if (treats.includes("manual")) revenue += calcRevenue(getApptManualDur(a), "manual", a.date);
+        if (treats.includes("taping")) revenue += calcRevenue(15, "taping", a.date);
         rows.push([t.name, a.date, a.time, a.patient, a.birthday, getApptTreatLabel(a), a.duration, a.onDuty ? "班內" : "班外", a.selfRef ? "自轉" : "非自轉", revenue || "-", calcPay(a)]);
       });
       const s = summaries.find(s2 => s2.id === t.id);
@@ -1692,7 +1697,7 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
       rows.push([]);
     });
     monthLuAppts.filter(a => a.checkedIn).sort(sortByDateTime).forEach(a => {
-      const rev = calcRevenue(a.duration, "manual");
+      const rev = calcRevenue(a.duration, "manual", a.date);
       rows.push(["盧獨立時段", a.date, a.time, a.patient, a.birthday, "徒手", a.duration, "班外", a.selfRef ? "自轉" : "非自轉", rev, calcLuPay(a)]);
     });
     rows.push(["盧獨立 小計", "", "", "", "", "", "", "", "", "", luSummary.totalPay]);
@@ -1809,7 +1814,7 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
             {(() => { const items = selDetail.filter(a => getApptTreats(a).includes("taping") && !a.onDuty && !a.selfRef); return items.length > 0 ? <><div style={{ color: "#C2563A" }}>貼紮·班外非自轉 (60%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPartialPay(a,"taping"),0).toLocaleString()}</div></> : null; })()}
             {(() => { const items = selDetail.filter(a => getApptTreats(a).includes("taping") && a.onDuty && a.selfRef); return items.length > 0 ? <><div style={{ color: "#5B6ABF" }}>貼紮·班內自轉 (70%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPartialPay(a,"taping"),0).toLocaleString()}</div></> : null; })()}
             {(() => { const items = selDetail.filter(a => getApptTreats(a).includes("taping") && !a.onDuty && a.selfRef); return items.length > 0 ? <><div style={{ color: "#B8860B" }}>貼紮·班外自轉 (90%)</div><div style={{ textAlign: "right" }}>{items.length}</div><div style={{ textAlign: "right" }}>NT$ {items.reduce((s,a)=>s+calcPartialPay(a,"taping"),0).toLocaleString()}</div></> : null; })()}
-            {selSummary.otherCount > 0 && <><div style={{ color: "#8B7355" }}>震波/雷射 (100/份)</div><div style={{ textAlign: "right" }}>{selSummary.otherCount} 份</div><div style={{ textAlign: "right" }}>NT$ {selSummary.otherPay.toLocaleString()}</div></>}
+            {selSummary.otherCount > 0 && <><div style={{ color: "#8B7355" }}>{isNewPrice(monthStart) ? "震波·震波雷射各半 125／雷射 100 (每份)" : "震波/雷射 (100/份)"}</div><div style={{ textAlign: "right" }}>{selSummary.otherCount} 份</div><div style={{ textAlign: "right" }}>NT$ {selSummary.otherPay.toLocaleString()}</div></>}
             {selTh !== "LU" && teamBonus[selTh] > 0 && (() => {
               const teamDetail = monthAppts.filter(a =>
                 a.checkedIn && a.onDuty && getApptTreats(a).includes("manual") && a.therapist !== "X" && a.therapist !== selTh
@@ -1826,7 +1831,7 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
                   <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 11, fontFamily: "'Noto Sans TC', sans-serif" }}>
                     <thead><tr style={{ background: "#D0EDE6" }}>{["日期","時間","患者","治療師","時長","收費","分潤(5%)"].map(h => <th key={h} style={{ padding: "3px 6px", textAlign: "left", fontWeight: 600, color: "#1A5A4A", borderBottom: "1px solid #B8DDD4" }}>{h}</th>)}</tr></thead>
                     <tbody>{teamDetail.map((a, i) => {
-                      const rev = calcRevenue(getApptManualDur(a), "manual");
+                      const rev = calcRevenue(getApptManualDur(a), "manual", a.date);
                       const th2 = TH_MAP[a.therapist] || TH_MAP["X"];
                       return (<tr key={a.id} style={{ background: i % 2 === 0 ? "white" : "#F0FAF7" }}>
                         <td style={{ padding: "3px 6px", borderBottom: "1px solid #D8EDE8" }}>{a.date}</td>
@@ -1868,10 +1873,10 @@ function SalarySummary({ appts, luAppts, cs, onMonthChange }) {
                     const ttLabel = isLu ? "徒手" : getApptTreatLabel(a);
                     const treats = getApptTreats(a);
                     let revenue = 0;
-                    if (isLu) { revenue = calcRevenue(a.duration, "manual"); }
+                    if (isLu) { revenue = calcRevenue(a.duration, "manual", a.date); }
                     else {
-                      if (treats.includes("manual")) revenue += calcRevenue(getApptManualDur(a), "manual");
-                      if (treats.includes("taping")) revenue += calcRevenue(15, "taping");
+                      if (treats.includes("manual")) revenue += calcRevenue(getApptManualDur(a), "manual", a.date);
+                      if (treats.includes("taping")) revenue += calcRevenue(15, "taping", a.date);
                     }
                     const showRevenue = isLu || treats.includes("manual") || treats.includes("taping");
                     const pay = isLu ? calcLuPay(a) : calcPay(a);
@@ -2469,7 +2474,7 @@ export default function App() {
         <div style={{ background: "#FFFDF5", border: "1.5px solid #E0D5C1", borderRadius: 10, padding: "14px 16px", marginBottom: 12, fontSize: 17, color: "#5A4A3A", lineHeight: 1.8 }}>
           <div style={{ fontWeight: 700, color: "#3D2B1F", fontSize: 19, marginBottom: 8, fontFamily: "'Noto Serif TC', serif" }}>📋 預約說明</div>
           <div style={{ paddingLeft: 4 }}>
-            <div style={{ marginBottom: 8, color: "#C2563A", fontWeight: 700 }}>*反應行情及成本，預計於115/11/1調整徒手價格至350元/15分，調整震波價格至2000元，謝謝您的支持與諒解*</div>
+            <div style={{ marginBottom: 8, color: "#C2563A", fontWeight: 700 }}>{isNewPrice(fd(new Date())) ? "*反應行情及成本，自115/11/1起已調整徒手價格至350元/15分，震波價格至2000元，謝謝您的支持與諒解*" : "*反應行情及成本，預計於115/11/1調整徒手價格至350元/15分，調整震波價格至2000元，謝謝您的支持與諒解*"}</div>
             <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>1.</span> 初診的朋友請先完成門診評估後，再進行治療預約喔！若尚未看診就預約，報到時可能會取消該預約，敬請見諒。</div>
             <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>2.</span> 預約時可以直接選擇時段，也可以點選治療師查看可預約時間；點選「不指定」即可回到全部時段。完成預約後，記得至「查詢及取消」頁面，輸入身分證字號確認是否預約成功。</div>
             <div style={{ marginBottom: 4 }}><span style={{ color: "#C2563A", fontWeight: 700 }}>3.</span> 當日暫不開放線上預約與取消，請來電洽詢。另，僅限「線上預約」之紀錄可於系統查詢與取消；若是由櫃台預約，則需再請櫃台處理。次月預約功能將於每月25日自動開放，歡迎多加利用。</div>
